@@ -21,3 +21,34 @@ class AStockSymbol:
     def display(self) -> str:
         """The symbol as reports spell it."""
         return f"{self.code}.{self.exchange}"
+
+
+@dataclass(frozen=True)
+class DailyBar:
+    """One completed session's OHLCV, with the source it came from."""
+
+    date: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    source: str
+    as_of: str
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    """A live quote and the valuation fields the brief reports."""
+
+    code: str
+    name: str
+    price: float
+    prev_close: float
+    change_pct: float
+    volume: float
+    turnover_rate: float | None
+    pe_ttm: float | None
+    pb: float | None
+    source: str
+    as_of: str
