@@ -149,7 +149,8 @@ def filter_analysts_for_asset_type(
     return [
         analyst
         for analyst in analysts
-        if analyst != AnalystType.FUNDAMENTALS
+        if analyst not in (AnalystType.FUNDAMENTALS, AnalystType.POLICY,
+                           AnalystType.HOT_MONEY, AnalystType.LOCKUP)
     ]
 
 

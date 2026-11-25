@@ -51,6 +51,9 @@ _SECTIONS = (
         ("Sentiment Analyst", "sentiment.md", ("sentiment_report",)),
         ("News Analyst", "news.md", ("news_report",)),
         ("Fundamentals Analyst", "fundamentals.md", ("fundamentals_report",)),
+        ("Policy Analyst", "policy.md", ("policy_report",)),
+        ("Hot Money Analyst", "hot_money.md", ("hot_money_report",)),
+        ("Lockup Analyst", "lockup.md", ("lockup_report",)),
     )),
     ("II. Research Team Decision", "2_research", (
         ("Bull Researcher", "bull.md", ("investment_debate_state", "bull_history")),

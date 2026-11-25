@@ -125,7 +125,9 @@ def _graph(tmp_path, monkeypatch, model, debug=False, **config):
                              "fundamental_data": "yfinance", "news_data": "yfinance"},
                **config)
     monkeypatch.setattr(trading_graph, "create_tier_client", lambda config, tier, **k: _Client(model))
-    return trading_graph.TradingAgentsGraph(config=cfg, debug=debug)
+    return trading_graph.TradingAgentsGraph(
+        selected_analysts=("market", "social", "news", "fundamentals"),
+        config=cfg, debug=debug)
 
 
 @pytest.mark.unit
