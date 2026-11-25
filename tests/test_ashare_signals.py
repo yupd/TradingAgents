@@ -1,0 +1,21 @@
+import tradingagents.dataflows.vendors.a_share.signals as s
+
+
+def test_fund_flow_history_mode_refuses_realtime(monkeypatch):
+    monkeypatch.setattr(s, "_fetch_fund_flow",
+                        lambda *a: [{"date": "2026-06-01", "main_net": 1.2e8}])
+    text = s.get_fund_flow("600519", "2026-06-01", include_history=False)
+    assert "实时" not in text and "2026-06-01" in text
+
+
+def test_dragon_tiger_lists_seats(monkeypatch):
+    monkeypatch.setattr(s, "_fetch_lhb",
+                        lambda *a: [{"date": "2026-05-28", "seat": "机构专用", "net": 3.0e7}])
+    text = s.get_dragon_tiger_board("600519", "2026-06-01")
+    assert "机构专用" in text and "2026-05-28" in text
+
+
+def test_signal_failure_degrades(monkeypatch):
+    monkeypatch.setattr(s, "_fetch_lhb", lambda *a: (_ for _ in ()).throw(RuntimeError("down")))
+    text = s.get_dragon_tiger_board("600519", "2026-06-01")
+    assert "DATA_UNAVAILABLE" in text
