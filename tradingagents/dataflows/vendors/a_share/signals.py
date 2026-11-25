@@ -129,3 +129,122 @@ def get_northbound_flow(curr_date: str, include_history: bool = False) -> str:
     lines += [f"| {row[date_col]} | {row[value_col]} |" for _, row in frame.iterrows()]
     lines.append(f"\nSource: eastmoney | As of: {frame.iloc[-1][date_col]}")
     return "\n".join(lines)
+
+
+def _fetch_lockups(sym: AStockSymbol) -> list[dict]:
+    response = http.em_get(
+        "https://datacenter-web.eastmoney.com/api/data/v1/get",
+        params={"reportName": "RPT_LIFT_STAGE", "columns": "ALL",
+                "filter": f'(SECURITY_CODE="{sym.code}")', "pageSize": 50,
+                "sortColumns": "FREE_DATE", "sortTypes": "1"},
+    )
+    items = (response.json().get("result") or {}).get("data") or []
+    return [{"announced": str(item.get("NOTICE_DATE") or "")[:10],
+             "expiry": str(item.get("FREE_DATE") or "")[:10],
+             "ratio": float(item.get("LIFT_MARKET_CAP_RATIO") or 0)} for item in items]
+
+
+def get_lockup_expiry(ticker: str, curr_date: str, forward_days: int = 90) -> str:
+    from datetime import timedelta
+
+    sym = parse_ashare(ticker)
+    try:
+        rows = _fetch_lockups(sym)
+    except Exception as exc:
+        return f"DATA_UNAVAILABLE: lockup expiry for {sym.display} ({exc})"
+    horizon = (datetime.strptime(curr_date, "%Y-%m-%d") + timedelta(days=forward_days)).strftime("%Y-%m-%d")
+    kept = [row for row in rows
+            if row["announced"] and row["announced"] <= curr_date
+            and curr_date <= row["expiry"] <= horizon]
+    if not kept:
+        return f"NO_DATA_AVAILABLE: no lockup expiry for {sym.display} in the next {forward_days} days"
+    lines = [f"# {sym.display} 解禁日历（未来 {forward_days} 天）", "",
+             "| 解禁日 | 占总市值 |", "|---|---|"]
+    lines += [f"| {row['expiry']} | {row['ratio']:.2f}% |" for row in kept]
+    lines.append(f"\nSource: eastmoney | As of: {curr_date}")
+    return "\n".join(lines)
+
+
+def _fetch_forecast(sym: AStockSymbol) -> dict:
+    # shortcut: AkShare 的预期接口列名随版本漂移，取不到就降级为不可用；后续可换东财直连。
+    import akshare as ak
+
+    frame = ak.stock_profit_forecast_em(symbol=sym.code)
+    if frame is None or frame.empty:
+        raise RuntimeError("no forecast rows")
+    row = frame.iloc[0]
+    return {"eps": float(row.get("每股收益", 0) or 0),
+            "coverage": int(row.get("预测机构数", 0) or 0)}
+
+
+def get_profit_forecast(ticker: str, curr_date: str) -> str:
+    sym = parse_ashare(ticker)
+    try:
+        data = _fetch_forecast(sym)
+    except Exception as exc:
+        return f"DATA_UNAVAILABLE: consensus forecast for {sym.display} ({exc})"
+    note = ("\n\ncurrent snapshot, not historical：一致预期没有历史时点值，"
+            f"这里展示的是当前版本，不是 {curr_date} 当天的预期。"
+            if curr_date < _today() else "")
+    return (f"# {sym.display} 一致预期\n\n- EPS：{data['eps']:.2f}\n"
+            f"- 覆盖机构：{data['coverage']}\n\nSource: eastmoney | As of: {_today()}{note}")
+
+
+def _fetch_industry(sym: AStockSymbol, top_n: int) -> list[dict]:
+    # shortcut: 行业对比用全市场行业榜代替个股所属行业，够用但不够精确。
+    import akshare as ak
+
+    frame = ak.stock_board_industry_name_em().sort_values("涨跌幅", ascending=False).head(top_n)
+    return [{"name": row.get("板块名称", ""), "change": float(row.get("涨跌幅", 0) or 0)}
+            for _, row in frame.iterrows()]
+
+
+def get_industry_comparison(ticker: str, curr_date: str, top_n: int = 20) -> str:
+    sym = parse_ashare(ticker)
+    try:
+        rows = _fetch_industry(sym, top_n)
+    except Exception as exc:
+        return f"DATA_UNAVAILABLE: industry comparison for {sym.display} ({exc})"
+    if not rows:
+        return f"NO_DATA_AVAILABLE: no industry comparison for {sym.display}"
+    lines = [f"# {sym.display} 行业对比（涨幅前 {top_n}）", "", "| 行业 | 涨跌幅 |", "|---|---|"]
+    lines += [f"| {row['name']} | {row['change']:.2f}% |" for row in rows]
+    note = (f"\n\ncurrent snapshot, not historical：请求日为 {curr_date}。"
+            if curr_date < _today() else "")
+    lines.append(f"\nSource: eastmoney | As of: {_today()}{note}")
+    return "\n".join(lines)
+
+
+def _fetch_holders(sym: AStockSymbol) -> list[dict]:
+    response = http.em_get(
+        "https://datacenter-web.eastmoney.com/api/data/v1/get",
+        params={"reportName": "RPT_SHARE_HOLDER_INCREASE", "columns": "ALL",
+                "filter": f'(SECURITY_CODE="{sym.code}")', "pageSize": 50,
+                "sortColumns": "NOTICE_DATE", "sortTypes": "-1"},
+    )
+    items = (response.json().get("result") or {}).get("data") or []
+    rows = []
+    for item in items:
+        shares = item.get("CHANGE_SHARES") or item.get("CHANGE_NUM") or 0
+        try:
+            rows.append({"name": item.get("HOLDER_NAME") or "—", "change": float(shares) / 1e4})
+        except (TypeError, ValueError):
+            continue
+    return rows
+
+
+def get_insider_transactions(ticker: str, curr_date: str | None = None) -> str:
+    """A-share shareholder/executive changes: 增持 or 减持, in 万股."""
+    sym = parse_ashare(ticker)
+    try:
+        rows = _fetch_holders(sym)
+    except Exception as exc:
+        return f"DATA_UNAVAILABLE: shareholder changes for {sym.display} ({exc})"
+    if not rows:
+        return f"NO_DATA_AVAILABLE: no shareholder changes for {sym.display}"
+    lines = [f"# {sym.display} 股东/高管增减持", ""]
+    for row in rows[:20]:
+        action = "增持" if row["change"] >= 0 else "减持"
+        lines.append(f"- {row['name']} {action} {abs(row['change']):,.2f} 万股")
+    lines.append(f"\nSource: eastmoney | As of: {curr_date or _today()}")
+    return "\n".join(lines)
