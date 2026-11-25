@@ -107,12 +107,10 @@ def test_empty_path_value_keeps_the_default_path(monkeypatch):
         monkeypatch,
         TRADINGAGENTS_RESULTS_DIR="",
         TRADINGAGENTS_CACHE_DIR="",
-        TRADINGAGENTS_MEMORY_LOG_PATH="",
     )
     home = default_config_module._TRADINGAGENTS_HOME
     assert config["results_dir"] == os.path.join(home, "logs")
     assert config["data_cache_dir"] == os.path.join(home, "cache")
-    assert config["memory_log_path"] == os.path.join(home, "memory", "trading_memory.md")
 
 
 def test_invalid_int_raises(monkeypatch):

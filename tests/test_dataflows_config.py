@@ -138,27 +138,6 @@ def test_concurrent_runs_each_read_their_own_config():
 
     assert results == {"a": "alpha_vantage", "b": "sec_edgar,yfinance"}
 
-
-@pytest.mark.unit
-def test_settling_reads_the_graphs_own_config(monkeypatch):
-    from tradingagents.dataflows.router import get_vendor
-
-    config = copy.deepcopy(default_config.DEFAULT_CONFIG)
-    config["tool_vendors"] = {"get_stock_data": "alpha_vantage"}
-    graph = _graph(config)
-    graph.memory_log = graph.reflector = None      # the settlement below is a stand-in
-    seen = []
-    from tradingagents.memory import settlement
-
-    monkeypatch.setattr(settlement, "settle_pending",
-                        lambda *a: seen.append(get_vendor("core_stock_apis", "get_stock_data")))
-
-    graph.settle_pending("AAPL")
-
-    assert seen == ["alpha_vantage"]
-
-
-@pytest.mark.unit
 def test_tools_inside_a_langgraph_run_see_the_run_config():
     """The fix rests on LangGraph carrying the caller's context into tool calls."""
     from langchain_core.messages import AIMessage

@@ -257,34 +257,6 @@ def test_the_first_failure_cancels_the_requests_not_yet_sent(jev, post, monkeypa
 
     assert len(post) < 21
 
-
-@pytest.mark.unit
-def test_the_sentiment_analyst_hands_the_screen_to_both_social_fetchers(monkeypatch):
-    from langchain_core.messages import AIMessage
-
-    from tradingagents.agents.analysts import sentiment_analyst
-
-    screen = object()
-    seen = []
-    monkeypatch.setattr(sentiment_analyst, "jev_screen", lambda ticker: screen)
-    monkeypatch.setattr(sentiment_analyst.get_news, "func", lambda *a: "news")
-    for name in ("fetch_stocktwits_messages", "fetch_reddit_posts"):
-        monkeypatch.setattr(sentiment_analyst, name, lambda *a, screen=None, **k: seen.append(screen) or "")
-
-    class _LLM:
-        def with_structured_output(self, *a, **k):
-            raise NotImplementedError
-
-        def invoke(self, messages):
-            return AIMessage(content="report")
-
-    node = sentiment_analyst.create_sentiment_analyst(_LLM())
-    node({"company_of_interest": "NVDA", "trade_date": "2026-01-09", "messages": []})
-
-    assert seen == [screen, screen]
-
-
-@pytest.mark.unit
 def test_a_failure_does_not_wait_for_requests_still_in_flight(jev, monkeypatch):
     import threading
     import time

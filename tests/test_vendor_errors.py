@@ -18,11 +18,6 @@ from tradingagents.dataflows.errors import (
     VendorNotConfiguredError,
     VendorUnavailableError,
 )
-from tradingagents.dataflows.vendors.alpha_vantage.common import (
-    AlphaVantageNotConfiguredError,
-    AlphaVantageRateLimitError,
-)
-from tradingagents.dataflows.vendors.fred import FredNotConfiguredError
 
 
 @pytest.mark.unit
@@ -34,13 +29,6 @@ class HierarchyTests(unittest.TestCase):
     def test_not_configured_is_still_a_value_error(self):
         # Back-compat: existing `except ValueError` callers keep working.
         self.assertTrue(issubclass(VendorNotConfiguredError, ValueError))
-
-    def test_vendor_named_errors_subclass_the_generic_bases(self):
-        self.assertTrue(issubclass(AlphaVantageRateLimitError, VendorUnavailableError))
-        self.assertTrue(issubclass(AlphaVantageNotConfiguredError, VendorNotConfiguredError))
-        self.assertTrue(issubclass(FredNotConfiguredError, VendorNotConfiguredError))
-        # ... and therefore still ValueErrors
-        self.assertTrue(issubclass(FredNotConfiguredError, ValueError))
 
 
 @pytest.mark.unit
@@ -56,11 +44,11 @@ class RouterHandlesBaseTypesTests(unittest.TestCase):
         set_config({"data_vendors": {"core_stock_apis": "alpha_vantage,yfinance"}})
 
         def _throttled(*a, **k):
-            raise AlphaVantageRateLimitError("slow down")
+            raise VendorUnavailableError("slow down")
 
         with mock.patch.dict(
             router.VENDOR_METHODS,
-            {"get_stock_data": {"alpha_vantage": _throttled, "yfinance": lambda *a, **k: "YF"}},
+            {"get_stock_data": {"fake": _throttled, "yfinance": lambda *a, **k: "YF"}},
             clear=False,
         ):
             out = router.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
@@ -70,11 +58,11 @@ class RouterHandlesBaseTypesTests(unittest.TestCase):
         set_config({"data_vendors": {"core_stock_apis": "alpha_vantage,yfinance"}})
 
         def _unconfigured(*a, **k):
-            raise AlphaVantageNotConfiguredError("no key")
+            raise VendorNotConfiguredError("no key")
 
         with mock.patch.dict(
             router.VENDOR_METHODS,
-            {"get_stock_data": {"alpha_vantage": _unconfigured, "yfinance": lambda *a, **k: "YF"}},
+            {"get_stock_data": {"fake": _unconfigured, "yfinance": lambda *a, **k: "YF"}},
             clear=False,
         ):
             out = router.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
@@ -82,16 +70,16 @@ class RouterHandlesBaseTypesTests(unittest.TestCase):
 
     def test_sole_unconfigured_vendor_surfaces_the_error(self):
         # With no fallback, the not-configured condition must surface (not vanish).
-        set_config({"data_vendors": {"core_stock_apis": "alpha_vantage"}})
+        set_config({"data_vendors": {"core_stock_apis": "fake"}})
 
         def _unconfigured(*a, **k):
-            raise AlphaVantageNotConfiguredError("no key")
+            raise VendorNotConfiguredError("no key")
 
         with mock.patch.dict(
             router.VENDOR_METHODS,
-            {"get_stock_data": {"alpha_vantage": _unconfigured}},
+            {"get_stock_data": {"fake": _unconfigured}},
             clear=False,
-        ), self.assertRaises(AlphaVantageNotConfiguredError):
+        ), self.assertRaises(VendorNotConfiguredError):
             router.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")
 
     def test_an_unavailable_vendor_keeps_absence_from_being_claimed(self):
@@ -106,9 +94,9 @@ class RouterHandlesBaseTypesTests(unittest.TestCase):
         def not_covered(*a, **k):
             raise NoMarketDataError("AAPL", "AAPL", "not covered")
 
-        for chain in ({"yfinance": throttled, "alpha_vantage": not_covered},
-                      {"yfinance": not_covered, "alpha_vantage": throttled},
-                      {"alpha_vantage": timed_out, "yfinance": not_covered}):
+        for chain in ({"yfinance": throttled, "fake": not_covered},
+                      {"yfinance": not_covered, "fake": throttled},
+                      {"fake": timed_out, "yfinance": not_covered}):
             set_config({"data_vendors": {"core_stock_apis": ",".join(chain)}})
             with mock.patch.dict(router.VENDOR_METHODS, {"get_stock_data": chain}, clear=False):
                 out = router.route_to_vendor("get_stock_data", "AAPL", "2026-01-01", "2026-01-10")

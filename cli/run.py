@@ -96,7 +96,7 @@ def _build_run_config(selections: dict, checkpoint: bool | None) -> dict:
     return config
 
 
-def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
+def run_analysis(checkpoint: bool | None = None, flags=None):
     flags = flags or {}
     # With no terminal nothing can answer a prompt: name every question still
     # open before any model is called, rather than stopping at the first one.
@@ -214,10 +214,9 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
         update_display(layout, spinner_text, stats_handler=stats_handler, start_time=start_time)
 
         # The same initial state propagate() builds, with the resolved
-        # instrument identity; the graph's Memory Log step settles past
-        # decisions and loads their lessons alongside the analysts.
+        # instrument identity.
         init_agent_state = graph.create_run_state(
-            selections["ticker"], selections["analysis_date"], selections["asset_type"], portfolio
+            selections["ticker"], selections["analysis_date"], selections["asset_type"]
         )
         # Pass callbacks to graph config for tool execution tracking
         # (LLM tracking is handled separately via LLM constructor)
@@ -227,7 +226,7 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
         # actually saves and resumes on the CLI path (#1249); a no-op when
         # checkpointing is disabled. Torn down in the finally below.
         checkpoint_tid = graph.begin_checkpoint(
-            selections["ticker"], selections["analysis_date"], selections["asset_type"], portfolio
+            selections["ticker"], selections["analysis_date"], selections["asset_type"]
         )
         if checkpoint_tid is not None:
             args.setdefault("config", {}).setdefault("configurable", {})["thread_id"] = checkpoint_tid
@@ -352,7 +351,7 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
             # the checkpoint for resume.
             graph.record_decision(selections["ticker"], selections["analysis_date"], final_state)
             graph.clear_checkpoint_on_success(
-                selections["ticker"], selections["analysis_date"], selections["asset_type"], portfolio
+                selections["ticker"], selections["analysis_date"], selections["asset_type"]
             )
         finally:
             # Always restore the plain uncheckpointed graph, even on failure.
