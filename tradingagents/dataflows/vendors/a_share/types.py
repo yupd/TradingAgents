@@ -62,3 +62,13 @@ class StatementRow:
     publish_date: str | None
     values: dict[str, float]
     source: str
+
+
+@dataclass(frozen=True)
+class NewsItem:
+    """One dated item from an announcement, a research report or a news feed."""
+
+    title: str
+    published_at: str
+    source: str
+    url: str | None = None
