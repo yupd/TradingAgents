@@ -39,6 +39,10 @@ def _sources(facts: StockFacts) -> list[str]:
         line = _source_line(label, text)
         if line:
             sources.append(line)
+    for text in facts.announcements:
+        line = _source_line("news", text)
+        if line:
+            sources.append(line)
     return sources
 
 
@@ -73,3 +77,13 @@ def summarize(facts: StockFacts, flags: list[Flag], llm) -> BriefEntry:
     summary = text.replace(match.group(0), "").strip() if match else text + "\n（摘要解析失败，倾向按中性处理）"
     return BriefEntry(code=facts.code, name=facts.name, summary=summary, lean=lean,
                       flags=list(flags), sources=_sources(facts), missing=list(facts.missing))
+
+
+def safe_summarize(facts: StockFacts, flags: list[Flag], llm) -> BriefEntry:
+    """One stock's failure must not cost the whole brief."""
+    try:
+        return summarize(facts, flags, llm)
+    except Exception as exc:
+        return BriefEntry(code=facts.code, name=facts.name, summary=f"摘要失败：{type(exc).__name__}",
+                          lean="中性", flags=list(flags), sources=_sources(facts),
+                          missing=list(facts.missing))

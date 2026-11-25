@@ -56,9 +56,15 @@ def _load_statement(sym: AStockSymbol, kind: str, freq: str) -> list[dict]:
 
 
 def _to_rows(raw: list[dict]) -> list[StatementRow]:
-    return [StatementRow(period=r["period"], publish_date=r.get("publish_date"),
-                         values=r.get("values", {}), source=r.get("source", "unknown"))
-            for r in raw]
+    rows = []
+    for r in raw:
+        values = r.get("values")
+        if values is None:
+            values = {k: float(v) for k, v in r.items()
+                      if k not in ("period", "publish_date", "source") and isinstance(v, (int, float))}
+        rows.append(StatementRow(period=r["period"], publish_date=r.get("publish_date"),
+                                 values=values, source=r.get("source", "unknown")))
+    return rows
 
 
 def _select(sym: AStockSymbol, kind: str, freq: str, as_of: str | None):
@@ -74,7 +80,13 @@ def _select(sym: AStockSymbol, kind: str, freq: str, as_of: str | None):
             else:
                 kept.append(row)
         rows = kept
-    rows = sorted(rows, key=lambda r: r.period, reverse=True)
+    # One row per period: keep the version announced latest on or before as_of.
+    by_period: dict[str, StatementRow] = {}
+    for row in rows:
+        current = by_period.get(row.period)
+        if current is None or (row.publish_date or "") > (current.publish_date or ""):
+            by_period[row.period] = row
+    rows = sorted(by_period.values(), key=lambda r: r.period, reverse=True)
     return rows, {"no_date": withheld_no_date, "after": withheld_after}
 
 
@@ -108,15 +120,24 @@ def _format(sym: AStockSymbol, kind: str, freq: str, as_of: str | None) -> str:
 
 
 def get_income_statement(ticker: str, freq: str = "quarterly", curr_date: str | None = None) -> str:
-    return _format(parse_ashare(ticker), "income", freq, curr_date)
+    try:
+        return _format(parse_ashare(ticker), "income", freq, curr_date)
+    except Exception as exc:
+        return f"DATA_UNAVAILABLE: statements for {ticker} ({type(exc).__name__}: {exc})"
 
 
 def get_balance_sheet(ticker: str, freq: str = "quarterly", curr_date: str | None = None) -> str:
-    return _format(parse_ashare(ticker), "balance", freq, curr_date)
+    try:
+        return _format(parse_ashare(ticker), "balance", freq, curr_date)
+    except Exception as exc:
+        return f"DATA_UNAVAILABLE: statements for {ticker} ({type(exc).__name__}: {exc})"
 
 
 def get_cashflow(ticker: str, freq: str = "quarterly", curr_date: str | None = None) -> str:
-    return _format(parse_ashare(ticker), "cashflow", freq, curr_date)
+    try:
+        return _format(parse_ashare(ticker), "cashflow", freq, curr_date)
+    except Exception as exc:
+        return f"DATA_UNAVAILABLE: statements for {ticker} ({type(exc).__name__}: {exc})"
 
 
 def get_fundamentals(ticker: str, curr_date: str | None = None) -> str:

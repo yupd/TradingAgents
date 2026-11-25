@@ -226,6 +226,8 @@ def _run_details(final_state: dict, settings: dict | None) -> list[tuple[str, st
     details = [("Generated", escape(datetime.now().strftime("%Y-%m-%d %H:%M")))]
     if settings:
         s = settings.get
+        if s("data_as_of"):
+            details.append(("Data as of", escape(str(s("data_as_of")))))
         for tier in ("deep", "quick"):
             provider = s(f"{tier}_think_provider") or s("llm_provider", "?")
             details.append((f"{tier.capitalize()} model", _fields([provider, s(f"{tier}_think_llm", "?")])))

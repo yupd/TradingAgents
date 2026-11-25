@@ -23,3 +23,10 @@ def test_cn_seven_hk_four_analysts(monkeypatch):
 def test_deep_rejects_unsupported(monkeypatch):
     result = CliRunner().invoke(app, ["deep", "AAPL"])
     assert result.exit_code == 2
+
+
+def test_deep_accepts_resume(monkeypatch):
+    seen = {}
+    monkeypatch.setattr("cli.main.run_deep", lambda code, **kw: seen.setdefault("resume", kw.get("resume")) or 0)
+    result = CliRunner().invoke(app, ["deep", "600519", "--resume"])
+    assert result.exit_code == 0 and seen["resume"] is True

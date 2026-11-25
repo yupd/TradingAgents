@@ -13,6 +13,11 @@ def _today() -> str:
     return datetime.now().strftime("%Y-%m-%d")
 
 
+def _within(date: str, curr_date: str) -> bool:
+    """A historical run excludes the same day's after-close disclosures."""
+    return date < curr_date if curr_date < _today() else date <= curr_date
+
+
 def _market_id(sym: AStockSymbol) -> str:
     return "1" if sym.exchange == "SH" else "0"
 
@@ -29,14 +34,15 @@ def _fetch_fund_flow(sym: AStockSymbol, curr_date: str, include_history: bool) -
     for line in rows:
         parts = line.split(",")
         parsed.append({"date": parts[0], "main_net": float(parts[1])})
-    parsed = [row for row in parsed if row["date"] <= curr_date]
+    parsed = [row for row in parsed if _within(row["date"], curr_date)]
     return parsed[-20:] if include_history else parsed[-1:]
 
 
 def get_fund_flow(ticker: str, curr_date: str, include_history: bool = True) -> str:
     sym = parse_ashare(ticker)
     try:
-        rows = _fetch_fund_flow(sym, curr_date, include_history)
+        rows = [row for row in _fetch_fund_flow(sym, curr_date, include_history)
+                if _within(row["date"], curr_date)]
     except Exception as exc:
         return f"DATA_UNAVAILABLE: fund flow for {sym.display} ({exc})"
     if not rows:
@@ -58,16 +64,19 @@ def _fetch_lhb(sym: AStockSymbol, trade_date: str, look_back_days: int) -> list[
     rows = []
     for item in items:
         date = str(item.get("TRADE_DATE") or "")[:10]
-        if date and date <= trade_date:
+        if date and _within(date, trade_date):
+            if item.get("NET_BUY_AMT") is None:
+                raise RuntimeError("dragon-tiger board row has no NET_BUY_AMT")
             rows.append({"date": date, "seat": item.get("OPERATEDEPT_NAME") or "—",
-                         "net": float(item.get("NET_BUY_AMT") or 0)})
+                         "net": float(item["NET_BUY_AMT"])})
     return rows[: max(1, look_back_days)]
 
 
 def get_dragon_tiger_board(ticker: str, curr_date: str, look_back_days: int = 30) -> str:
     sym = parse_ashare(ticker)
     try:
-        rows = _fetch_lhb(sym, curr_date, look_back_days)
+        rows = [row for row in _fetch_lhb(sym, curr_date, look_back_days)
+                if _within(row["date"], curr_date)]
     except Exception as exc:
         return f"DATA_UNAVAILABLE: dragon-tiger board for {sym.display} ({exc})"
     if not rows:
@@ -121,7 +130,7 @@ def get_northbound_flow(curr_date: str, include_history: bool = False) -> str:
     frame = frame.copy()
     date_col = "日期" if "日期" in frame.columns else frame.columns[0]
     frame[date_col] = frame[date_col].astype(str).str[:10]
-    frame = frame[frame[date_col] <= curr_date].tail(20 if include_history else 1)
+    frame = frame[[_within(value, curr_date) for value in frame[date_col]]].tail(20 if include_history else 1)
     if frame.empty:
         return f"NO_DATA_AVAILABLE: no northbound flow up to {curr_date}"
     value_col = "当日成交净买额" if "当日成交净买额" in frame.columns else frame.columns[1]
@@ -173,8 +182,11 @@ def _fetch_forecast(sym: AStockSymbol) -> dict:
     if frame is None or frame.empty:
         raise RuntimeError("no forecast rows")
     row = frame.iloc[0]
-    return {"eps": float(row.get("每股收益", 0) or 0),
-            "coverage": int(row.get("预测机构数", 0) or 0)}
+    eps_col = next((column for column in frame.columns if "每股收益" in str(column)), None)
+    coverage_col = next((column for column in frame.columns if "机构" in str(column)), None)
+    if eps_col is None or coverage_col is None:
+        raise RuntimeError("consensus forecast columns are missing")
+    return {"eps": float(row[eps_col]), "coverage": int(row[coverage_col])}
 
 
 def get_profit_forecast(ticker: str, curr_date: str) -> str:
@@ -225,11 +237,12 @@ def _fetch_holders(sym: AStockSymbol) -> list[dict]:
     items = (response.json().get("result") or {}).get("data") or []
     rows = []
     for item in items:
-        shares = item.get("CHANGE_SHARES") or item.get("CHANGE_NUM") or 0
-        try:
-            rows.append({"name": item.get("HOLDER_NAME") or "—", "change": float(shares) / 1e4})
-        except (TypeError, ValueError):
-            continue
+        shares = item.get("CHANGE_SHARES") if item.get("CHANGE_SHARES") is not None else item.get("CHANGE_NUM")
+        date = str(item.get("NOTICE_DATE") or "")[:10]
+        if shares is None or not date:
+            raise RuntimeError("shareholder-change row is missing shares or NOTICE_DATE")
+        rows.append({"date": date, "name": item.get("HOLDER_NAME") or "—",
+                     "change": float(shares) / 1e4})
     return rows
 
 
@@ -240,11 +253,13 @@ def get_insider_transactions(ticker: str, curr_date: str | None = None) -> str:
         rows = _fetch_holders(sym)
     except Exception as exc:
         return f"DATA_UNAVAILABLE: shareholder changes for {sym.display} ({exc})"
+    cutoff = curr_date or _today()
+    rows = [row for row in rows if _within(row["date"], cutoff)]
     if not rows:
-        return f"NO_DATA_AVAILABLE: no shareholder changes for {sym.display}"
+        return f"NO_DATA_AVAILABLE: no shareholder changes for {sym.display} up to {cutoff}"
     lines = [f"# {sym.display} 股东/高管增减持", ""]
     for row in rows[:20]:
         action = "增持" if row["change"] >= 0 else "减持"
-        lines.append(f"- {row['name']} {action} {abs(row['change']):,.2f} 万股")
-    lines.append(f"\nSource: eastmoney | As of: {curr_date or _today()}")
+        lines.append(f"- {row['date']} {row['name']} {action} {abs(row['change']):,.2f} 万股")
+    lines.append(f"\nSource: eastmoney | As of: {rows[0]['date']}")
     return "\n".join(lines)

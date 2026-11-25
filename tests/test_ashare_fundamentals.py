@@ -31,3 +31,19 @@ def test_source_and_as_of_in_header(monkeypatch):
     monkeypatch.setattr(f, "_load_statement", lambda *a: ROWS)
     text = f.get_income_statement("600519", "quarterly", "2026-09-15")
     assert "Source:" in text and "As of:" in text
+
+
+def test_duplicate_period_keeps_the_latest_announcement(monkeypatch):
+    rows = [
+        {"period": "2026-06-30", "publish_date": "2026-08-31", "revenue": 95.0},
+        {"period": "2026-06-30", "publish_date": "2026-08-20", "revenue": 90.0},
+    ]
+    monkeypatch.setattr(f, "_load_statement", lambda *a: rows)
+    got = f.get_statement(parse_ashare("600519"), "income", "quarterly", "2026-09-15")
+    assert len(got) == 1 and got[0].values["revenue"] == 95.0
+
+
+def test_source_failure_returns_sentinel(monkeypatch):
+    monkeypatch.setattr(f, "_load_statement", lambda *a: (_ for _ in ()).throw(RuntimeError("down")))
+    text = f.get_income_statement("600519", "quarterly", "2026-09-15")
+    assert text.startswith("DATA_UNAVAILABLE")

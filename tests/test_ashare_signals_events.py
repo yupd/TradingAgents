@@ -16,6 +16,6 @@ def test_forecast_flags_historical_snapshot(monkeypatch):
 
 
 def test_insider_uses_ashare_wording(monkeypatch):
-    monkeypatch.setattr(s, "_fetch_holders", lambda *a: [{"name": "某某", "change": -1.2}])
+    monkeypatch.setattr(s, "_fetch_holders", lambda *a: [{"date": "2026-05-01", "name": "某某", "change": -1.2}])
     text = s.get_insider_transactions("600519")
     assert "减持" in text

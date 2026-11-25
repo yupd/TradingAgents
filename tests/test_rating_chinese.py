@@ -16,3 +16,7 @@ def test_chinese_rating(text, expected):
 
 def test_rating_line_wins_over_consensus():
     assert extract_rating("Consensus rating: Buy\n\nOur rating: 卖出") == "Sell"
+
+
+def test_chinese_own_line_beats_english_consensus():
+    assert extract_rating("Consensus rating: 卖出\n\nOur rating: Buy") == "Buy"

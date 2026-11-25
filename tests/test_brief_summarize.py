@@ -23,3 +23,22 @@ def test_summary_has_lean_and_keeps_facts():
     assert entry.lean == "偏多"
     assert "1.2 亿" in llm.seen[-1]
     assert "放量" in llm.seen[-1]
+
+
+def test_one_stock_failure_does_not_raise():
+    from brief.summarize import safe_summarize
+
+    class Boom:
+        def invoke(self, messages):
+            raise TimeoutError("slow")
+
+    entry = safe_summarize(StockFacts(code="600519", name="贵州茅台"), [], Boom())
+    assert entry.code == "600519" and entry.lean == "中性" and "摘要失败" in entry.summary
+
+
+def test_news_source_line_is_reported():
+    from brief.summarize import _sources
+
+    facts = StockFacts(code="600519", name="贵州茅台",
+                       announcements=["Source: 东财公告 | As of: 2026-06-01 10:00"])
+    assert any("东财公告" in line for line in _sources(facts))

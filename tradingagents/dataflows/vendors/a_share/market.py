@@ -6,7 +6,7 @@ import copy
 
 from .symbols import parse_ashare
 
-_METHOD_KEYS = ("core_stock_apis", "technical_indicators", "fundamental_data", "news_data")
+_METHOD_KEYS = ("core_stock_apis", "technical_indicators", "fundamental_data", "news_data", "signal_data")
 
 
 def market_of(raw: str) -> str:
@@ -24,6 +24,23 @@ def apply_market_config(raw: str, config: dict) -> dict:
     cfg = copy.deepcopy(config)
     vendors = dict(cfg.get("data_vendors") or {})
     for key in _METHOD_KEYS:
-        vendors[key] = "a_share" if market == "CN" else "yfinance"
+        if market == "CN":
+            vendors[key] = "a_share"
+        else:
+            vendors[key] = "" if key == "signal_data" else "yfinance"
     cfg["data_vendors"] = vendors
     return cfg
+
+
+def apply_default_market_config(raw: str, config: dict) -> dict:
+    """Route A-share and HK codes as their markets need; other codes keep yfinance."""
+    try:
+        return apply_market_config(raw, config)
+    except ValueError:
+        cfg = copy.deepcopy(config)
+        vendors = dict(cfg.get("data_vendors") or {})
+        for key in ("core_stock_apis", "technical_indicators", "fundamental_data", "news_data"):
+            vendors[key] = "yfinance"
+        vendors["signal_data"] = ""
+        cfg["data_vendors"] = vendors
+        return cfg

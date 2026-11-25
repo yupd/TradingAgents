@@ -93,6 +93,7 @@ def deep(
     code: str = typer.Argument(..., help="A-share code or .HK code, e.g. 600519 or 0700.HK"),
     date: str = typer.Argument(None, help="Trade date, YYYY-MM-DD; defaults to the latest session"),
     debate: int = typer.Option(None, "--debate", help="Debate rounds; defaults to the config"),
+    resume: bool = typer.Option(False, "--resume", help="Resume from the latest checkpoint"),
 ):
     """Run the full multi-analyst deep dive for one instrument."""
     from tradingagents.dataflows.vendors.a_share.market import market_of
@@ -104,7 +105,7 @@ def deep(
         raise typer.Exit(code=2) from None
     analysts = (["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
                 if market == "CN" else ["market", "social", "news", "fundamentals"])
-    run_deep(code=code, date=date, selected_analysts=analysts, debate=debate)
+    run_deep(code=code, date=date, selected_analysts=analysts, debate=debate, resume=resume)
 
 
 @app.command()

@@ -111,6 +111,9 @@ def run_analysis(checkpoint: bool | None = None, flags=None):
     selections = get_user_selections(flags)
 
     config = _build_run_config(selections, checkpoint)
+    from tradingagents.dataflows.vendors.a_share.market import apply_default_market_config
+
+    config = apply_default_market_config(selections["ticker"], config)
 
     stats_handler = StatsCallbackHandler()
 
@@ -471,7 +474,7 @@ def run_brief(trade_date: str | None = None, watchlist: str = "watchlist.yaml"):
     from brief.fetch import collect_facts
     from brief.render import render_brief
     from brief.rules import compute_flags
-    from brief.summarize import summarize
+    from brief.summarize import safe_summarize
     from brief.watchlist import load_watchlist
     from tradingagents.default_config import DEFAULT_CONFIG
     from tradingagents.llm_clients import create_tier_client
@@ -483,12 +486,12 @@ def run_brief(trade_date: str | None = None, watchlist: str = "watchlist.yaml"):
     # shortcut: 串行取数，30 只以内够用；更长的自选池再改成并发（上限 3）。
     for item in items:
         facts = collect_facts(item, day)
-        entries.append(summarize(facts, compute_flags(facts), llm))
+        entries.append(safe_summarize(facts, compute_flags(facts), llm))
     return render_brief(day, entries, Path("reports") / "brief")
 
 
 def run_deep(code: str, date: str | None = None, selected_analysts: list[str] | None = None,
-             debate: int | None = None) -> int:
+             debate: int | None = None, resume: bool = False) -> int:
     """Run the full graph for one instrument and write its report tree."""
     from datetime import date as _date
     from pathlib import Path
@@ -502,7 +505,11 @@ def run_deep(code: str, date: str | None = None, selected_analysts: list[str] | 
     market = market_of(code)
     day = date or _date.today().isoformat()
     if market == "CN":
-        day = previous_trade_date(day)
+        try:
+            day = previous_trade_date(day)
+        except Exception:
+            # The calendar is unreachable; keep the user's date rather than crash.
+            pass
     cfg = apply_market_config(code, DEFAULT_CONFIG)
     cfg = {**cfg, "checkpoint_enabled": True}
     if debate is not None:
