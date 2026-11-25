@@ -52,3 +52,13 @@ class Snapshot:
     pb: float | None
     source: str
     as_of: str
+
+
+@dataclass(frozen=True)
+class StatementRow:
+    """One reported period, with the date it was announced."""
+
+    period: str
+    publish_date: str | None
+    values: dict[str, float]
+    source: str
