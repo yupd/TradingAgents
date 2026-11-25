@@ -29,7 +29,8 @@ from tradingagents.agents.structured import (
     bind_structured,
     invoke_structured_or_freetext,
 )
-from tradingagents.agents.tools import get_news
+from tradingagents.agents.tools import get_fund_flow, get_hot_stocks, get_news, get_stock_data
+from tradingagents.dataflows.vendors.a_share.symbols import parse_ashare
 
 
 def _seven_days_back(trade_date: str) -> str:
@@ -52,17 +53,28 @@ def create_sentiment_analyst(llm):
         start_date = _seven_days_back(end_date)
         instrument_context = get_instrument_context_from_state(state)
 
-        # Pre-fetch the news source. The fetcher degrades to a placeholder
-        # string, so the LLM always sees something. A-share sentiment sources
-        # are added in a later task.
+        # Pre-fetch every source; each fetcher degrades to a placeholder string,
+        # so the LLM always sees something real or an explicit gap.
         news_block = get_news.func(ticker, start_date, end_date)
-
-        system_message = _build_system_message(
-            ticker=ticker,
-            start_date=start_date,
-            end_date=end_date,
-            news_block=news_block,
-        )
+        try:
+            parse_ashare(ticker)
+            is_cn = True
+        except ValueError:
+            is_cn = False
+        if is_cn:
+            system_message = build_ashare_system_message(
+                news_block=news_block,
+                flow_block=get_fund_flow.func(ticker, end_date, True),
+                hot_block=get_hot_stocks.func(end_date),
+                price_block=get_stock_data.func(ticker, start_date, end_date),
+            )
+        else:
+            system_message = _build_system_message(
+                ticker=ticker,
+                start_date=start_date,
+                end_date=end_date,
+                news_block=news_block,
+            )
 
         prompt = ChatPromptTemplate.from_messages(
             [
@@ -138,5 +150,52 @@ Institutional framing. Fact-driven, slower-moving signal.
 - **overall_score**: A number from 0 (maximally bearish) to 10 (maximally bullish); 5 is neutral.
 - **confidence**: low / medium / high, based on data quality and sample size.
 - **narrative**: Source-by-source breakdown, dominant themes, catalysts and risks, and a markdown summary table.
+
+{get_language_instruction()}"""
+
+
+def build_ashare_system_message(*, news_block: str, flow_block: str,
+                               hot_block: str, price_block: str) -> str:
+    """The A-share sentiment prompt: hard signals first, news to explain them."""
+    return f"""You are a financial market sentiment analyst for a mainland A-share. Produce a comprehensive sentiment report from four pre-fetched sources.
+
+## Data sources (pre-fetched)
+
+### Fund flow — the hardest evidence
+Money moving is stronger evidence than words. Read main-force versus retail direction.
+
+<start_of_fund_flow>
+{flow_block}
+<end_of_fund_flow>
+
+### Hot-stock list — where retail attention is
+<start_of_hot_stocks>
+{hot_block}
+<end_of_hot_stocks>
+
+### Price and volume — the strength of the move
+<start_of_price_volume>
+{price_block}
+<end_of_price_volume>
+
+### News — what explains the sentiment
+<start_of_news>
+{news_block}
+<end_of_news>
+
+## How to analyze this data
+
+1. **Fund flow first.** A rising price with main-force outflow is a warning; a falling price with main-force inflow may be accumulation. Say which divergence you see.
+2. **Volume confirms or denies.** A move without volume expansion is weak.
+3. **Retail attention is contrarian at extremes.** Very high attention with accelerating price can mark a near-term top; low attention with improving flow can mark a bottom.
+4. **News explains, it does not replace the hard data.** If the news is bullish but flow is negative, say so.
+5. **Be honest about data limits.** Any "<unavailable>" or "DATA_UNAVAILABLE" block lowers confidence; say so.
+
+## Output fields
+
+- **overall_band**: Exactly one of Bullish / Mildly Bullish / Neutral / Mixed / Mildly Bearish / Bearish.
+- **overall_score**: 0 (maximally bearish) to 10 (maximally bullish); 5 is neutral.
+- **confidence**: low / medium / high, based on data quality.
+- **narrative**: Source-by-source breakdown, divergences, dominant narrative, catalysts and risks, plus a markdown summary table.
 
 {get_language_instruction()}"""
