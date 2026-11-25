@@ -47,3 +47,18 @@ def test_source_failure_returns_sentinel(monkeypatch):
     monkeypatch.setattr(f, "_load_statement", lambda *a: (_ for _ in ()).throw(RuntimeError("down")))
     text = f.get_income_statement("600519", "quarterly", "2026-09-15")
     assert text.startswith("DATA_UNAVAILABLE")
+
+
+def test_statement_columns_exclude_metadata():
+    rows = [{"period": "2026-09-30", "publish_date": "2026-10-28",
+             "TOTAL_OPERATE_INCOME": 100.0, "INDUSTRY_CODE": 123.0, "REPORT_DATE": 1.0}]
+    import tradingagents.dataflows.vendors.a_share.fundamentals as f
+    from tradingagents.dataflows.vendors.a_share.symbols import parse_ashare
+
+    original = f._load_statement
+    f._load_statement = lambda *a: rows
+    try:
+        text = f.get_income_statement("600519", "quarterly", None)
+    finally:
+        f._load_statement = original
+    assert "TOTAL_OPERATE_INCOME" in text and "INDUSTRY_CODE" not in text

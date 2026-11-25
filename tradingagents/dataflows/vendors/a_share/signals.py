@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pandas as pd
+
 from . import akshare_patch  # noqa: F401  (installs the Eastmoney wrapper)
 from . import http
 from .symbols import parse_ashare
@@ -34,9 +36,31 @@ def _fetch_fund_flow(sym: AStockSymbol, curr_date: str, include_history: bool) -
     parsed = []
     for line in rows:
         parts = line.split(",")
-        parsed.append({"date": parts[0], "main_net": float(parts[1])})
+        parsed.append({"date": parts[0], "main_net": float(parts[1]), "source": "eastmoney"})
     parsed = [row for row in parsed if _within(row["date"], curr_date)]
     return parsed[-20:] if include_history else parsed[-1:]
+
+
+def _money_to_yuan(text: str) -> float:
+    value = str(text).strip()
+    if value.endswith("亿"):
+        return float(value[:-1]) * 1e8
+    if value.endswith("万"):
+        return float(value[:-1]) * 1e4
+    return float(value)
+
+
+def _fetch_fund_flow_ths(sym: AStockSymbol, curr_date: str) -> list[dict]:
+    # THS serves only the current session; a historical run must not use it.
+    if curr_date < _today():
+        raise RuntimeError("THS fund flow has no historical values")
+    import akshare as ak
+
+    frame = ak.stock_fund_flow_individual_ths(symbol="即时")
+    row = frame[frame["股票代码"].astype(str).str.zfill(6) == sym.code]
+    if row.empty:
+        raise RuntimeError("the stock is not in the THS flow table")
+    return [{"date": curr_date, "main_net": _money_to_yuan(row.iloc[0]["净额"]), "source": "ths"}]
 
 
 def get_fund_flow(ticker: str, curr_date: str, include_history: bool = True) -> str:
@@ -44,33 +68,45 @@ def get_fund_flow(ticker: str, curr_date: str, include_history: bool = True) -> 
     try:
         rows = [row for row in _fetch_fund_flow(sym, curr_date, include_history)
                 if _within(row["date"], curr_date)]
-    except Exception as exc:
-        return f"DATA_UNAVAILABLE: fund flow for {sym.display} ({exc})"
+    except Exception as first:
+        try:
+            rows = _fetch_fund_flow_ths(sym, curr_date)
+        except Exception:
+            return f"DATA_UNAVAILABLE: fund flow for {sym.display} ({first})"
     if not rows:
         return f"NO_DATA_AVAILABLE: no fund flow for {sym.display} up to {curr_date}"
     lines = [f"# {sym.display} 资金流", "", "| 日期 | 主力净流入(万元) |", "|---|---|"]
     lines += [f"| {row['date']} | {row['main_net'] / 1e4:,.0f} |" for row in rows]
-    lines.append(f"\nSource: eastmoney | As of: {rows[-1]['date']}")
+    lines.append(f"\nSource: {rows[-1].get('source', 'eastmoney')} | As of: {rows[-1]['date']}")
     return "\n".join(lines)
 
 
-def _fetch_lhb(sym: AStockSymbol, trade_date: str, look_back_days: int) -> list[dict]:
+def _lhb_report(report: str, sym: AStockSymbol) -> list[dict]:
     response = http.em_get(
         "https://datacenter-web.eastmoney.com/api/data/v1/get",
-        params={"reportName": "RPT_DAILYBILLBOARD_DETAILSNEW", "columns": "ALL",
+        params={"reportName": report, "columns": "ALL",
                 "filter": f'(SECURITY_CODE="{sym.code}")', "pageSize": 100,
                 "sortColumns": "TRADE_DATE", "sortTypes": "-1"},
     )
-    items = (response.json().get("result") or {}).get("data") or []
+    return (response.json().get("result") or {}).get("data") or []
+
+
+def _fetch_lhb(sym: AStockSymbol, trade_date: str, look_back_days: int) -> list[dict]:
+    from datetime import timedelta
+
+    start = (datetime.strptime(trade_date, "%Y-%m-%d")
+             - timedelta(days=max(1, look_back_days))).strftime("%Y-%m-%d")
     rows = []
-    for item in items:
-        date = str(item.get("TRADE_DATE") or "")[:10]
-        if date and _within(date, trade_date):
-            if item.get("NET_BUY_AMT") is None:
-                raise RuntimeError("dragon-tiger board row has no NET_BUY_AMT")
+    for report in ("RPT_BILLBOARD_DAILYDETAILSBUY", "RPT_BILLBOARD_DAILYDETAILSSELL"):
+        for item in _lhb_report(report, sym):
+            date = str(item.get("TRADE_DATE") or "")[:10]
+            net = item.get("NET")
+            if not date or net is None or not (start <= date and _within(date, trade_date)):
+                continue
             rows.append({"date": date, "seat": item.get("OPERATEDEPT_NAME") or "—",
-                         "net": float(item["NET_BUY_AMT"])})
-    return rows[: max(1, look_back_days)]
+                         "net": float(net)})
+    rows.sort(key=lambda row: row["date"], reverse=True)
+    return rows[:100]
 
 
 def get_dragon_tiger_board(ticker: str, curr_date: str, look_back_days: int = 30) -> str:
@@ -95,13 +131,24 @@ def get_hot_stocks(curr_date: str = "") -> str:
         import akshare as ak
 
         frame = ak.stock_hot_rank_em().head(20)
-    except Exception as exc:
-        return f"DATA_UNAVAILABLE: hot stocks ({exc})"
-    lines = [f"# 热门股榜（{_today()}）", "", "| 代码 | 名称 | 排名 |", "|---|---|---|"]
-    for _, row in frame.iterrows():
-        lines.append(f"| {row.get('代码', '—')} | {row.get('股票名称', '—')} | {row.get('当前排名', '—')} |")
-    lines.append(f"\nSource: eastmoney | As of: {_today()}")
-    return "\n".join(lines)
+        lines = [f"# 热门股榜（{_today()}）", "", "| 代码 | 名称 | 排名 |", "|---|---|---|"]
+        for _, row in frame.iterrows():
+            lines.append(f"| {row.get('代码', '—')} | {row.get('股票名称', '—')} | {row.get('当前排名', '—')} |")
+        lines.append(f"\nSource: eastmoney | As of: {_today()}")
+        return "\n".join(lines)
+    except Exception as first:
+        # shortcut: 东财 push2 限流时退回雪球关注榜（较慢，约 20s），恢复后可去掉。
+        try:
+            import akshare as ak
+
+            frame = ak.stock_hot_follow_xq(symbol="最热门").head(20)
+            lines = [f"# 热门股榜（{_today()}，雪球关注）", "", "| 代码 | 名称 | 关注 |", "|---|---|---|"]
+            for _, row in frame.iterrows():
+                lines.append(f"| {row.get('股票代码', '—')} | {row.get('股票简称', '—')} | {row.get('关注', '—')} |")
+            lines.append(f"\nSource: xueqiu | As of: {_today()}")
+            return "\n".join(lines)
+        except Exception:
+            return f"DATA_UNAVAILABLE: hot stocks ({first})"
 
 
 def get_concept_blocks(ticker: str) -> str:
@@ -135,6 +182,12 @@ def get_northbound_flow(curr_date: str, include_history: bool = False) -> str:
     if frame.empty:
         return f"NO_DATA_AVAILABLE: no northbound flow up to {curr_date}"
     value_col = "当日成交净买额" if "当日成交净买额" in frame.columns else frame.columns[1]
+    frame = frame.copy()
+    frame[value_col] = pd.to_numeric(frame[value_col], errors="coerce")
+    frame = frame.dropna(subset=[value_col])
+    if frame.empty:
+        return ("NO_DATA_AVAILABLE: 北向资金净买额当前没有披露值（数据源返回空值）；"
+                "不输出方向性结论")
     lines = [f"# 北向资金（截至 {curr_date}）", "", "| 日期 | 净买额 |", "|---|---|"]
     lines += [f"| {row[date_col]} | {row[value_col]} |" for _, row in frame.iterrows()]
     lines.append(f"\nSource: eastmoney | As of: {frame.iloc[-1][date_col]}")
@@ -176,18 +229,15 @@ def get_lockup_expiry(ticker: str, curr_date: str, forward_days: int = 90) -> st
 
 
 def _fetch_forecast(sym: AStockSymbol) -> dict:
-    # shortcut: AkShare 的预期接口列名随版本漂移，取不到就降级为不可用；后续可换东财直连。
+    # THS takes a stock code (Eastmoney's forecast API takes an industry board name).
     import akshare as ak
 
-    frame = ak.stock_profit_forecast_em(symbol=sym.code)
+    frame = ak.stock_profit_forecast_ths(symbol=sym.code, indicator="预测年报每股收益")
     if frame is None or frame.empty:
         raise RuntimeError("no forecast rows")
     row = frame.iloc[0]
-    eps_col = next((column for column in frame.columns if "每股收益" in str(column)), None)
-    coverage_col = next((column for column in frame.columns if "机构" in str(column)), None)
-    if eps_col is None or coverage_col is None:
-        raise RuntimeError("consensus forecast columns are missing")
-    return {"eps": float(row[eps_col]), "coverage": int(row[coverage_col])}
+    return {"year": str(row.get("年度", "")), "eps": float(row["均值"]),
+            "coverage": int(row["预测机构数"])}
 
 
 def get_profit_forecast(ticker: str, curr_date: str) -> str:
@@ -199,16 +249,16 @@ def get_profit_forecast(ticker: str, curr_date: str) -> str:
     note = ("\n\ncurrent snapshot, not historical：一致预期没有历史时点值，"
             f"这里展示的是当前版本，不是 {curr_date} 当天的预期。"
             if curr_date < _today() else "")
-    return (f"# {sym.display} 一致预期\n\n- EPS：{data['eps']:.2f}\n"
-            f"- 覆盖机构：{data['coverage']}\n\nSource: eastmoney | As of: {_today()}{note}")
+    return (f"# {sym.display} 一致预期\n\n- 年度：{data.get('year', '—')}\n- EPS：{data['eps']:.2f}\n"
+            f"- 覆盖机构：{data['coverage']}\n\nSource: ths | As of: {_today()}{note}")
 
 
 def _fetch_industry(sym: AStockSymbol, top_n: int) -> list[dict]:
     # shortcut: 行业对比用全市场行业榜代替个股所属行业，够用但不够精确。
     import akshare as ak
 
-    frame = ak.stock_board_industry_name_em().sort_values("涨跌幅", ascending=False).head(top_n)
-    return [{"name": row.get("板块名称", ""), "change": float(row.get("涨跌幅", 0) or 0)}
+    frame = ak.stock_board_industry_summary_ths().sort_values("涨跌幅", ascending=False).head(top_n)
+    return [{"name": row.get("板块", ""), "change": float(row.get("涨跌幅", 0) or 0)}
             for _, row in frame.iterrows()]
 
 
@@ -224,7 +274,7 @@ def get_industry_comparison(ticker: str, curr_date: str, top_n: int = 20) -> str
     lines += [f"| {row['name']} | {row['change']:.2f}% |" for row in rows]
     note = (f"\n\ncurrent snapshot, not historical：请求日为 {curr_date}。"
             if curr_date < _today() else "")
-    lines.append(f"\nSource: eastmoney | As of: {_today()}{note}")
+    lines.append(f"\nSource: ths | As of: {_today()}{note}")
     return "\n".join(lines)
 
 

@@ -10,13 +10,19 @@ import pandas as pd
 _dates: tuple[date, ...] | None = None
 
 
+def _fetch_calendar(ak_module) -> pd.DataFrame:
+    """AkShare renamed the Sina calendar in 1.20.45; accept either name."""
+    fetch = getattr(ak_module, "calendar_trade_date_hist_sina", None) or ak_module.tool_trade_date_hist_sina
+    return fetch()
+
+
 def _load_dates() -> tuple[date, ...]:
     """Every trading day the calendar source knows, oldest first."""
     global _dates
     if _dates is None:
         import akshare as ak
 
-        frame = ak.tool_trade_date_hist_sina()
+        frame = _fetch_calendar(ak)
         _dates = tuple(pd.to_datetime(frame["trade_date"]).dt.date.tolist())
     return _dates
 

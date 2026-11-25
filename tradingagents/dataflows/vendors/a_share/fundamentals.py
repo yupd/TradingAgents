@@ -14,7 +14,8 @@ _REPORTS = {
     "cashflow": "RPT_DMSK_FN_CASHFLOW",
 }
 _LABELS = {"income": "利润表", "balance": "资产负债表", "cashflow": "现金流量表"}
-_META = {"REPORT_DATE", "NOTICE_DATE", "SECURITY_CODE", "SECURITY_NAME_ABBR"}
+_META = {"REPORT_DATE", "NOTICE_DATE", "SECURITY_CODE", "SECURITY_NAME_ABBR", "DATA_STATE"}
+_META_SUFFIXES = ("_CODE", "_DATE", "_TYPE", "_ID")
 
 
 def _date(value) -> str | None:
@@ -44,7 +45,7 @@ def _load_statement(sym: AStockSymbol, kind: str, freq: str) -> list[dict]:
             continue
         values = {}
         for key, value in item.items():
-            if key in _META:
+            if key in _META or key.endswith(_META_SUFFIXES):
                 continue
             try:
                 values[key] = float(value)
@@ -61,7 +62,8 @@ def _to_rows(raw: list[dict]) -> list[StatementRow]:
         values = r.get("values")
         if values is None:
             values = {k: float(v) for k, v in r.items()
-                      if k not in ("period", "publish_date", "source") and isinstance(v, (int, float))}
+                      if k not in ("period", "publish_date", "source")
+                      and not k.endswith(_META_SUFFIXES) and isinstance(v, (int, float))}
         rows.append(StatementRow(period=r["period"], publish_date=r.get("publish_date"),
                                  values=values, source=r.get("source", "unknown")))
     return rows

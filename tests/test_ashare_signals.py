@@ -34,3 +34,22 @@ def test_signal_failure_degrades(monkeypatch):
     monkeypatch.setattr(s, "_fetch_lhb", lambda *a: (_ for _ in ()).throw(RuntimeError("down")))
     text = s.get_dragon_tiger_board("600519", "2026-06-01")
     assert "DATA_UNAVAILABLE" in text
+
+
+def test_fund_flow_falls_back_to_ths(monkeypatch):
+    import tradingagents.dataflows.vendors.a_share.signals as s
+
+    monkeypatch.setattr(s, "_fetch_fund_flow", lambda *a: (_ for _ in ()).throw(RuntimeError("em down")))
+    monkeypatch.setattr(s, "_fetch_fund_flow_ths",
+                        lambda *a: [{"date": "2026-11-25", "main_net": 1.2e8, "source": "ths"}])
+    text = s.get_fund_flow("600519", "2026-11-25")
+    assert "Source: ths" in text and "2026-11-25" in text
+
+
+def test_lhb_uses_recent_window_and_newest_first(monkeypatch):
+    import tradingagents.dataflows.vendors.a_share.signals as s
+
+    monkeypatch.setattr(s, "_fetch_lhb", lambda *a: [
+        {"date": "2026-05-28", "seat": "机构专用", "net": 3.0e7}])
+    text = s.get_dragon_tiger_board("600519", "2026-06-01")
+    assert "2026-05-28" in text
