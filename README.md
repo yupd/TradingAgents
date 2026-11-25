@@ -22,6 +22,27 @@ cp .env.example .env        # 填模型 key
 ~/.local/share/vibe-astock-python312/bin/python3 -m venv .venv
 ```
 
+## 用 Claude Code 当前的网关
+
+Claude Code 的网关是 Anthropic 兼容入口，同时也提供 `/chat/completions`。TradingAgents 用 `openai_compatible` 接它，且**不需要把密钥复制到 `.env`**：当没有设置 `TRADINGAGENTS_LLM_BACKEND_URL` / `OPENAI_COMPATIBLE_API_KEY` 时，会自动继承当前进程的 `ANTHROPIC_BASE_URL` 和 `ANTHROPIC_AUTH_TOKEN`。
+
+`.env` 只需：
+
+```ini
+TRADINGAGENTS_LLM_PROVIDER=openai_compatible
+TRADINGAGENTS_DEEP_THINK_LLM=deepseek-flash
+TRADINGAGENTS_QUICK_THINK_LLM=deepseek-flash
+```
+
+在 Claude Code 的终端里直接运行即可。若在普通 shell 里运行，先把网关配置导入：
+
+```bash
+export ANTHROPIC_BASE_URL=...   # 取 ~/.claude/settings.json 的 env
+export ANTHROPIC_AUTH_TOKEN=... # 同上；不要写进仓库
+```
+
+也可以显式指定 `TRADINGAGENTS_LLM_BACKEND_URL` 与 `OPENAI_COMPATIBLE_API_KEY`，显式值优先。
+
 ## 模型
 
 模型走 OpenAI 兼容接口（DeepSeek、OpenAI、Anthropic、Google、Ollama/vLLM 等）。最少配置：

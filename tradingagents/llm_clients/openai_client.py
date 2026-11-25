@@ -356,6 +356,9 @@ class OpenAIClient(BaseLLMClient):
             # OLLAMA_BASE_URL) > provider default. None means use the SDK default.
             env_base_url = os.environ.get(spec.base_url_env) if spec.base_url_env else None
             base_url = self.base_url or env_base_url or spec.base_url
+            # Reuse the Claude Code gateway when no dedicated endpoint is set.
+            if self.provider == "openai_compatible" and not base_url:
+                base_url = os.environ.get("ANTHROPIC_BASE_URL")
             check_endpoint(self.provider, base_url)
             if spec.require_base_url and not base_url:
                 raise ValueError(
@@ -372,6 +375,9 @@ class OpenAIClient(BaseLLMClient):
             # A signed-in provider sends its own credential, and only that.
             api_key_env = get_api_key_env(self.provider)
             api_key = os.environ.get(api_key_env) if api_key_env else None
+            # Claude Code stores its gateway token as ANTHROPIC_AUTH_TOKEN.
+            if self.provider == "openai_compatible" and not api_key:
+                api_key = os.environ.get("ANTHROPIC_AUTH_TOKEN")
             if spec.credential is not None:
                 if "api_key" in self.kwargs:
                     raise ValueError(f"Provider '{self.provider}' uses its sign-in, not an api_key.")
