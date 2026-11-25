@@ -1,0 +1,29 @@
+"""Which market a code belongs to, and the vendor config that market runs on."""
+
+from __future__ import annotations
+
+import copy
+
+from .symbols import parse_ashare
+
+_METHOD_KEYS = ("core_stock_apis", "technical_indicators", "fundamental_data", "news_data")
+
+
+def market_of(raw: str) -> str:
+    """``CN`` for a mainland code, ``HK`` for a ``.HK`` code, else ``ValueError``."""
+    text = (raw or "").strip().upper()
+    if text.endswith(".HK"):
+        return "HK"
+    parse_ashare(text)
+    return "CN"
+
+
+def apply_market_config(raw: str, config: dict) -> dict:
+    """Return a copy of ``config`` whose data vendors serve this market."""
+    market = market_of(raw)
+    cfg = copy.deepcopy(config)
+    vendors = dict(cfg.get("data_vendors") or {})
+    for key in _METHOD_KEYS:
+        vendors[key] = "a_share" if market == "CN" else "yfinance"
+    cfg["data_vendors"] = vendors
+    return cfg
