@@ -20,15 +20,20 @@ _MIN_EM_INTERVAL = 0.5
 _last_em_request = 0.0
 
 
+def throttle(url: str) -> None:
+    """Keep Eastmoney requests at most one per ``_MIN_EM_INTERVAL`` seconds."""
+    global _last_em_request
+    if "eastmoney.com" in url:
+        elapsed = time.time() - _last_em_request
+        if elapsed < _MIN_EM_INTERVAL:
+            time.sleep(_MIN_EM_INTERVAL - elapsed)
+        _last_em_request = time.time()
+
+
 def em_get(url: str, params: dict | None = None, timeout: int = 15, retries: int = 3):
     """GET with the browser headers, Eastmoney pacing and exponential backoff."""
-    global _last_em_request
     for attempt in range(retries):
-        if "eastmoney.com" in url:
-            elapsed = time.time() - _last_em_request
-            if elapsed < _MIN_EM_INTERVAL:
-                time.sleep(_MIN_EM_INTERVAL - elapsed)
-            _last_em_request = time.time()
+        throttle(url)
         try:
             return requests.get(url, params=params, headers=_HEADERS, timeout=timeout)
         except Exception:

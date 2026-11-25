@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from . import akshare_patch  # noqa: F401  (installs the Eastmoney wrapper)
 from datetime import date
 
 import pandas as pd

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from . import akshare_patch  # noqa: F401  (installs the Eastmoney wrapper)
 from . import http
 from .symbols import parse_ashare
 from .types import AStockSymbol
