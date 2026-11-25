@@ -8,7 +8,7 @@ from rich.markup import escape
 from cli.display import console
 from cli.models import AnalystType, AssetType
 from cli.prompts import filter_analysts_for_asset_type, parse_analysts
-from cli.run import run_analysis
+from cli.run import run_analysis, run_brief
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients.openai_client import SIGNED_IN_PROVIDERS
 
@@ -86,6 +86,16 @@ def analyze(
             err=True,
         )
         raise typer.Exit(code=1) from None
+
+
+@app.command()
+def brief(
+    date: str = typer.Option(None, "--date", help="Trade date, YYYY-MM-DD; defaults to today"),
+    watchlist: str = typer.Option("watchlist.yaml", "--watchlist", help="Path to the watchlist YAML"),
+):
+    """Write the daily A-share brief for the watchlist."""
+    path = run_brief(trade_date=date, watchlist=watchlist)
+    console.print(f"[green]Brief written:[/green] {path}")
 
 
 # The plans `login` and `logout` take: the providers signed in to, not keyed.

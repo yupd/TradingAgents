@@ -461,3 +461,27 @@ def _offer_reports(final_state, graph, ticker, save=None, show=None, html=None):
         show = typer.prompt("\nDisplay full report on screen?", default="Y").strip().upper() in ("Y", "YES", "")
     if show:
         display_complete_report(final_state)
+
+
+def run_brief(trade_date: str | None = None, watchlist: str = "watchlist.yaml"):
+    """Collect facts, compute rule flags and write one Markdown brief."""
+    from datetime import date
+    from pathlib import Path
+
+    from brief.fetch import collect_facts
+    from brief.render import render_brief
+    from brief.rules import compute_flags
+    from brief.summarize import summarize
+    from brief.watchlist import load_watchlist
+    from tradingagents.default_config import DEFAULT_CONFIG
+    from tradingagents.llm_clients import create_tier_client
+
+    day = trade_date or date.today().isoformat()
+    items = load_watchlist(Path(watchlist))
+    llm = create_tier_client(dict(DEFAULT_CONFIG), "quick").get_llm()
+    entries = []
+    # shortcut: 串行取数，30 只以内够用；更长的自选池再改成并发（上限 3）。
+    for item in items:
+        facts = collect_facts(item, day)
+        entries.append(summarize(facts, compute_flags(facts), llm))
+    return render_brief(day, entries, Path("reports") / "brief")
