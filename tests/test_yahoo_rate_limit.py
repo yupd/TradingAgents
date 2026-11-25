@@ -34,7 +34,9 @@ def _rate_limited(*args, **kwargs):
 
 @pytest.fixture
 def yahoo(monkeypatch, tmp_path):
-    set_config({"data_cache_dir": str(tmp_path)})
+    set_config({"data_cache_dir": str(tmp_path), "data_vendors": {
+        "core_stock_apis": "yfinance", "technical_indicators": "yfinance",
+        "fundamental_data": "yfinance", "news_data": "yfinance"}})
     monkeypatch.setattr(common.time, "sleep", lambda seconds: None)
     for module in (common, fundamentals):
         monkeypatch.setattr(module, "vendor_reachable", lambda url: True)

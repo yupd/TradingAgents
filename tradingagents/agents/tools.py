@@ -12,7 +12,6 @@ from langgraph.prebuilt import InjectedState
 from tradingagents.dataflows.date_window import as_of, as_of_window
 from tradingagents.dataflows.errors import NoMarketDataError, VendorUnavailableError
 from tradingagents.dataflows.router import no_data_available, route_to_vendor, vendor_unavailable
-from tradingagents.dataflows.vendors.yahoo.snapshot import build_verified_market_snapshot
 
 
 @tool
@@ -87,7 +86,7 @@ def get_verified_market_snapshot(
     """
     # An exception out of a tool would end the run.
     try:
-        return build_verified_market_snapshot(symbol, as_of(curr_date, trade_date), look_back_days)
+        return route_to_vendor("get_verified_market_snapshot", symbol, as_of(curr_date, trade_date), look_back_days)
     except VendorUnavailableError as exc:
         return vendor_unavailable("get_verified_market_snapshot", exc)
     except NoMarketDataError as exc:
@@ -227,3 +226,77 @@ def get_insider_transactions(
         str: A report of insider transaction data
     """
     return route_to_vendor("get_insider_transactions", ticker, trade_date or None)
+
+
+@tool
+def get_profit_forecast(
+    ticker: Annotated[str, InjectedState("company_of_interest")],
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+) -> str:
+    """Consensus EPS forecast and coverage for an A-share, with a look-ahead warning on past runs."""
+    return route_to_vendor("get_profit_forecast", ticker, curr_date)
+
+
+@tool
+def get_hot_stocks(
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format; empty for today"] = "",
+) -> str:
+    """Today's hottest A-shares; only the current ranking exists, so past dates are refused."""
+    return route_to_vendor("get_hot_stocks", curr_date)
+
+
+@tool
+def get_concept_blocks(
+    ticker: Annotated[str, InjectedState("company_of_interest")],
+) -> str:
+    """The industry, concept and region blocks an A-share belongs to."""
+    return route_to_vendor("get_concept_blocks", ticker)
+
+
+@tool
+def get_fund_flow(
+    ticker: Annotated[str, InjectedState("company_of_interest")],
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    include_history: Annotated[bool, "Include the last 20 sessions"] = True,
+) -> str:
+    """Main-force versus retail fund flow for an A-share, daily or over 20 sessions."""
+    return route_to_vendor("get_fund_flow", ticker, curr_date, include_history)
+
+
+@tool
+def get_northbound_flow(
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    include_history: Annotated[bool, "Include the last 20 sessions"] = False,
+) -> str:
+    """Northbound (沪深股通) net buying."""
+    return route_to_vendor("get_northbound_flow", curr_date, include_history)
+
+
+@tool
+def get_dragon_tiger_board(
+    ticker: Annotated[str, InjectedState("company_of_interest")],
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    look_back_days: Annotated[int, "Days to look back"] = 30,
+) -> str:
+    """Dragon-tiger board appearances, seats and net buying for an A-share."""
+    return route_to_vendor("get_dragon_tiger_board", ticker, curr_date, look_back_days)
+
+
+@tool
+def get_lockup_expiry(
+    ticker: Annotated[str, InjectedState("company_of_interest")],
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    forward_days: Annotated[int, "Days forward to check"] = 90,
+) -> str:
+    """Upcoming lockup expiries for an A-share."""
+    return route_to_vendor("get_lockup_expiry", ticker, curr_date, forward_days)
+
+
+@tool
+def get_industry_comparison(
+    ticker: Annotated[str, InjectedState("company_of_interest")],
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    top_n: Annotated[int, "How many industries to list"] = 20,
+) -> str:
+    """Industry performance ranking for sector-rotation context."""
+    return route_to_vendor("get_industry_comparison", ticker, curr_date, top_n)
