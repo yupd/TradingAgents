@@ -1,0 +1,15 @@
+from datetime import date
+
+from tradingagents.dataflows.vendors.a_share import calendar as cal
+
+
+def test_previous_trade_date_skips_holiday(monkeypatch):
+    monkeypatch.setattr(cal, "_load_dates", lambda: (date(2026, 9, 29), date(2026, 9, 30), date(2026, 10, 9)))
+    assert cal.previous_trade_date("2026-10-02") == "2026-09-30"
+    assert cal.is_trade_date("2026-09-30") is True
+    assert cal.is_trade_date("2026-10-02") is False
+
+
+def test_previous_trade_date_on_a_trade_date_returns_itself(monkeypatch):
+    monkeypatch.setattr(cal, "_load_dates", lambda: (date(2026, 9, 29), date(2026, 9, 30)))
+    assert cal.previous_trade_date("2026-09-30") == "2026-09-30"

@@ -83,11 +83,6 @@ def build_default_config() -> dict:
     return _apply_env_overrides({
         "results_dir": os.getenv("TRADINGAGENTS_RESULTS_DIR") or os.path.join(_TRADINGAGENTS_HOME, "logs"),
         "data_cache_dir": os.getenv("TRADINGAGENTS_CACHE_DIR") or os.path.join(_TRADINGAGENTS_HOME, "cache"),
-        "memory_log_path": os.getenv("TRADINGAGENTS_MEMORY_LOG_PATH") or os.path.join(_TRADINGAGENTS_HOME, "memory", "trading_memory.md"),
-        # Optional cap on the number of resolved memory log entries. When set,
-        # the oldest resolved entries are pruned once this limit is exceeded.
-        # Pending entries are never pruned. None disables rotation entirely.
-        "memory_log_max_entries": None,
         # LLM settings
         "llm_provider": "openai",
         "deep_think_llm": "gpt-6-sol",
@@ -156,14 +151,11 @@ def build_default_config() -> dict:
         # routed to vendors you didn't choose. For ordered fallback, list several,
         # e.g. "yfinance,alpha_vantage". "default" uses all available vendors.
         "data_vendors": {
-            "core_stock_apis": "yfinance",       # Options: alpha_vantage, yfinance
-            "technical_indicators": "yfinance",  # Options: alpha_vantage, yfinance
-            # Statements come from SEC EDGAR as filed (US filers), then Yahoo; the
-        # overview and insider tools, which SEC EDGAR does not serve, from Yahoo.
-        "fundamental_data": "sec_edgar,yfinance",  # Options: sec_edgar, alpha_vantage, yfinance
-            "news_data": "yfinance",             # Options: alpha_vantage, yfinance
-            "macro_data": "fred",                # Options: fred (needs FRED_API_KEY)
-            "prediction_markets": "polymarket",  # Options: polymarket (keyless)
+            "core_stock_apis": "a_share",
+            "technical_indicators": "a_share",
+            "fundamental_data": "a_share",
+            "news_data": "a_share",              # A-share announcements, research and flashes
+            "signal_data": "a_share",            # fund flow, dragon-tiger board, lockups, consensus
         },
         # Tool-level configuration (takes precedence over category-level)
         "tool_vendors": {

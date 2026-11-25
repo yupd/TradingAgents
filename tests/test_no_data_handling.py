@@ -17,7 +17,7 @@ import pytest
 from tradingagents.dataflows import router
 from tradingagents.dataflows.config import set_config
 from tradingagents.dataflows.date_window import get_current_date
-from tradingagents.dataflows.errors import NoMarketDataError
+from tradingagents.dataflows.errors import NoMarketDataError, VendorNotConfiguredError
 from tradingagents.dataflows.vendors.yahoo import common, ohlcv
 
 
@@ -55,6 +55,8 @@ class TestLoadOhlcvNoPoison(unittest.TestCase):
 @pytest.mark.unit
 class TestRouteToVendorSentinel(unittest.TestCase):
     def test_no_data_from_all_vendors_returns_sentinel(self):
+        set_config({"data_vendors": {"core_stock_apis": "yfinance,alpha_vantage"}})
+
         def raises_no_data(symbol, *a, **k):
             raise NoMarketDataError(symbol, "GC=F", "no rows")
 
@@ -71,6 +73,7 @@ class TestRouteToVendorSentinel(unittest.TestCase):
         self.assertIn("Do not estimate", result)
 
     def test_unconfigured_fallback_does_not_mask_no_data(self):
+        set_config({"data_vendors": {"core_stock_apis": "alpha_vantage,yfinance"}})
         # When the primary vendor reports no data and the fallback is simply
         # unavailable (e.g. missing API key -> raises), the no-data sentinel
         # must win rather than the fallback's incidental error crashing out.
@@ -78,7 +81,7 @@ class TestRouteToVendorSentinel(unittest.TestCase):
             raise NoMarketDataError(symbol, symbol, "no rows")
 
         def raises_unavailable(symbol, *a, **k):
-            raise ValueError("ALPHA_VANTAGE_API_KEY environment variable is not set.")
+            raise VendorNotConfiguredError("ALPHA_VANTAGE_API_KEY environment variable is not set.")
 
         patched = {"yfinance": raises_no_data, "alpha_vantage": raises_unavailable}
         with mock.patch.dict(

@@ -14,7 +14,6 @@ import pytest
 
 from tradingagents.agents import tools
 from tradingagents.dataflows.date_window import get_current_date
-from tradingagents.dataflows.vendors import polymarket
 from tradingagents.dataflows.vendors.yahoo import (
     fundamentals as yahoo_fundamentals,
     market as yahoo_market,
@@ -40,24 +39,8 @@ def test_yfinance_insider_without_a_date_is_unfiltered():
     out = _yf_insider(_insider_frame("2026-09-08", "2025-01-10"), None)
     assert "2026-09-08" in out and "2025-01-10" in out
 
-
 @pytest.mark.unit
-def test_polymarket_withholds_live_odds_from_a_historical_run():
-    with mock.patch.object(polymarket, "_request", side_effect=AssertionError("must not fetch")):
-        out = polymarket.get_prediction_markets("Fed rate cut", as_of_date="2025-06-01")
-    assert "withheld" in out
-
-
-@pytest.mark.unit
-def test_polymarket_serves_a_current_run():
-    with mock.patch.object(polymarket, "_request", return_value={"events": []}) as req:
-        polymarket.get_prediction_markets("Fed rate cut", as_of_date=get_current_date())
-    req.assert_called_once()
-
-
-@pytest.mark.unit
-@pytest.mark.parametrize("tool", [tools.get_insider_transactions,
-                                  tools.get_prediction_markets], ids=lambda t: t.name)
+@pytest.mark.parametrize("tool", [tools.get_insider_transactions], ids=lambda t: t.name)
 def test_trade_date_is_injected_not_model_visible(tool):
     assert "trade_date" in tool.func.__code__.co_varnames
     props = tool.tool_call_schema.model_json_schema()["properties"]
@@ -86,8 +69,7 @@ def test_a_historical_run_gets_the_current_name_only_as_an_identifier(monkeypatc
 @pytest.mark.unit
 def test_a_current_run_is_not_cluttered_with_a_vintage_note(monkeypatch):
     from tradingagents.agents.context import build_instrument_context
-    from tradingagents.dataflows.date_window import get_current_date
-
+    
     today = build_instrument_context("EXMP", "stock", {"company_name": "Example Corp"},
                                      trade_date=get_current_date())
     assert "Example Corp" in today

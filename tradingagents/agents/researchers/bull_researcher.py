@@ -19,6 +19,9 @@ def create_bull_researcher(llm):
         sentiment_report = report_or_absent(state["sentiment_report"], "sentiment")
         news_report = report_or_absent(state["news_report"], "news")
         fundamentals_report = report_or_absent(state["fundamentals_report"], "fundamentals")
+        policy_report = report_or_absent(state.get("policy_report", ""), "policy")
+        hot_money_report = report_or_absent(state.get("hot_money_report", ""), "hot money")
+        lockup_report = report_or_absent(state.get("lockup_report", ""), "lockup")
         instrument_context = get_instrument_context_from_state(state)
         asset_type = state.get("asset_type", "stock")
         target_label = "stock" if asset_type == "stock" else "asset"
@@ -43,6 +46,9 @@ Market research report: {market_research_report}
 Social media sentiment report: {sentiment_report}
 Latest world affairs news: {news_report}
 {fundamentals_label}: {fundamentals_report}
+A-share policy report: {policy_report}
+Hot-money and fund-flow report: {hot_money_report}
+Lockup and shareholder report: {lockup_report}
 Conversation history of the debate: {history}
 Last bear argument: {current_response}
 Use this information to deliver a compelling bull argument, refute the bear's concerns, and engage in a dynamic debate that demonstrates the strengths of the bull position.

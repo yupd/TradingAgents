@@ -199,20 +199,3 @@ def report_or_absent(text: str, source: str) -> str:
     if text:
         return text
     return f"(No {source} report in this run: it is not available, not an empty finding.)"
-
-
-def get_portfolio_context_from_state(state: Mapping[str, Any]) -> str:
-    """Return the caller's portfolio block, or a notice that none was given.
-
-    A run without portfolio context must not read as a flat book: the agents
-    would otherwise size as if the caller held nothing, which is a claim about
-    an account we were never told about.
-    """
-    context = state.get("portfolio_context")
-    if isinstance(context, str) and context.strip():
-        return context
-    return (
-        "Portfolio context: not provided. You do not know the caller's current "
-        "holdings or cash, so do not assume a flat book; give direction and "
-        "sizing guidance in terms the caller can apply to their own position."
-    )

@@ -6,25 +6,31 @@ from tradingagents.dataflows.errors import (
     VendorNotConfiguredError,
     VendorUnavailableError,
 )
-from tradingagents.dataflows.vendors.alpha_vantage import (
-    get_balance_sheet as get_alpha_vantage_balance_sheet,
-    get_cashflow as get_alpha_vantage_cashflow,
-    get_fundamentals as get_alpha_vantage_fundamentals,
-    get_global_news as get_alpha_vantage_global_news,
-    get_income_statement as get_alpha_vantage_income_statement,
-    get_indicator as get_alpha_vantage_indicator,
-    get_insider_transactions as get_alpha_vantage_insider_transactions,
-    get_news as get_alpha_vantage_news,
-    get_stock as get_alpha_vantage_stock,
+from tradingagents.dataflows.vendors.a_share.fundamentals import (
+    get_balance_sheet as get_ashare_balance_sheet,
+    get_cashflow as get_ashare_cashflow,
+    get_fundamentals as get_ashare_fundamentals,
+    get_income_statement as get_ashare_income_statement,
 )
-from tradingagents.dataflows.vendors.fred import get_macro_data as get_fred_macro_data
-from tradingagents.dataflows.vendors.polymarket import (
-    get_prediction_markets as get_polymarket_prediction_markets,
+from tradingagents.dataflows.vendors.a_share.news import (
+    get_global_news as get_ashare_global_news,
+    get_news as get_ashare_news,
 )
-from tradingagents.dataflows.vendors.sec_edgar import (
-    get_balance_sheet as get_sec_edgar_balance_sheet,
-    get_cashflow as get_sec_edgar_cashflow,
-    get_income_statement as get_sec_edgar_income_statement,
+from tradingagents.dataflows.vendors.a_share.quotes import (
+    get_indicators as get_ashare_indicators,
+    get_stock_data as get_ashare_stock_data,
+    get_verified_market_snapshot as get_ashare_snapshot,
+)
+from tradingagents.dataflows.vendors.a_share.signals import (
+    get_concept_blocks as get_ashare_concept_blocks,
+    get_dragon_tiger_board as get_ashare_lhb,
+    get_fund_flow as get_ashare_fund_flow,
+    get_hot_stocks as get_ashare_hot_stocks,
+    get_industry_comparison as get_ashare_industry,
+    get_insider_transactions as get_ashare_insider,
+    get_lockup_expiry as get_ashare_lockups,
+    get_northbound_flow as get_ashare_northbound,
+    get_profit_forecast as get_ashare_forecast,
 )
 from tradingagents.dataflows.vendors.yahoo.fundamentals import (
     get_balance_sheet as get_yfinance_balance_sheet,
@@ -38,6 +44,7 @@ from tradingagents.dataflows.vendors.yahoo.market import (
     get_YFin_data_online,
 )
 from tradingagents.dataflows.vendors.yahoo.news import get_global_news_yfinance, get_news_yfinance
+from tradingagents.dataflows.vendors.yahoo.snapshot import build_verified_market_snapshot
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +53,8 @@ TOOLS_CATEGORIES = {
     "core_stock_apis": {
         "description": "OHLCV stock price data",
         "tools": [
-            "get_stock_data"
+            "get_stock_data",
+            "get_verified_market_snapshot",
         ]
     },
     "technical_indicators": {
@@ -72,18 +80,19 @@ TOOLS_CATEGORIES = {
             "get_insider_transactions",
         ]
     },
-    "macro_data": {
-        "description": "Macroeconomic indicators (rates, inflation, labor, growth)",
+    "signal_data": {
+        "description": "A-share fund flow, dragon-tiger board, lockups and consensus",
         "tools": [
-            "get_macro_indicators",
+            "get_profit_forecast",
+            "get_hot_stocks",
+            "get_concept_blocks",
+            "get_fund_flow",
+            "get_northbound_flow",
+            "get_dragon_tiger_board",
+            "get_lockup_expiry",
+            "get_industry_comparison",
         ]
     },
-    "prediction_markets": {
-        "description": "Market-implied probabilities for forward-looking events",
-        "tools": [
-            "get_prediction_markets",
-        ]
-    }
 }
 
 # Optional enrichment categories. These add macro/event context to the news
@@ -91,61 +100,63 @@ TOOLS_CATEGORIES = {
 # sentinel instead of aborting the run (a bad LLM-supplied indicator, a missing
 # key, or a network blip should not crash an analysis over flavour data). Core
 # categories (prices, fundamentals, news) still raise so a broken primary is loud.
-OPTIONAL_CATEGORIES = {"macro_data", "prediction_markets"}
+OPTIONAL_CATEGORIES: set[str] = set()
 
 # Mapping of methods to their vendor-specific implementations
 VENDOR_METHODS = {
     # core_stock_apis
     "get_stock_data": {
-        "alpha_vantage": get_alpha_vantage_stock,
+        "a_share": get_ashare_stock_data,
         "yfinance": get_YFin_data_online,
+    },
+    "get_verified_market_snapshot": {
+        "a_share": get_ashare_snapshot,
+        "yfinance": build_verified_market_snapshot,
     },
     # technical_indicators
     "get_indicators": {
-        "alpha_vantage": get_alpha_vantage_indicator,
+        "a_share": get_ashare_indicators,
         "yfinance": get_stock_stats_indicators_window,
     },
     # fundamental_data
     "get_fundamentals": {
-        "alpha_vantage": get_alpha_vantage_fundamentals,
+        "a_share": get_ashare_fundamentals,
         "yfinance": get_yfinance_fundamentals,
     },
     "get_balance_sheet": {
-        "alpha_vantage": get_alpha_vantage_balance_sheet,
-        "sec_edgar": get_sec_edgar_balance_sheet,
+        "a_share": get_ashare_balance_sheet,
         "yfinance": get_yfinance_balance_sheet,
     },
     "get_cashflow": {
-        "alpha_vantage": get_alpha_vantage_cashflow,
-        "sec_edgar": get_sec_edgar_cashflow,
+        "a_share": get_ashare_cashflow,
         "yfinance": get_yfinance_cashflow,
     },
     "get_income_statement": {
-        "alpha_vantage": get_alpha_vantage_income_statement,
-        "sec_edgar": get_sec_edgar_income_statement,
+        "a_share": get_ashare_income_statement,
         "yfinance": get_yfinance_income_statement,
     },
     # news_data
     "get_news": {
-        "alpha_vantage": get_alpha_vantage_news,
+        "a_share": get_ashare_news,
         "yfinance": get_news_yfinance,
     },
     "get_global_news": {
+        "a_share": get_ashare_global_news,
         "yfinance": get_global_news_yfinance,
-        "alpha_vantage": get_alpha_vantage_global_news,
     },
     "get_insider_transactions": {
-        "alpha_vantage": get_alpha_vantage_insider_transactions,
+        "a_share": get_ashare_insider,
         "yfinance": get_yfinance_insider_transactions,
     },
-    # macro_data
-    "get_macro_indicators": {
-        "fred": get_fred_macro_data,
-    },
-    # prediction_markets
-    "get_prediction_markets": {
-        "polymarket": get_polymarket_prediction_markets,
-    },
+    # signal_data
+    "get_profit_forecast": {"a_share": get_ashare_forecast},
+    "get_hot_stocks": {"a_share": get_ashare_hot_stocks},
+    "get_concept_blocks": {"a_share": get_ashare_concept_blocks},
+    "get_fund_flow": {"a_share": get_ashare_fund_flow},
+    "get_northbound_flow": {"a_share": get_ashare_northbound},
+    "get_dragon_tiger_board": {"a_share": get_ashare_lhb},
+    "get_lockup_expiry": {"a_share": get_ashare_lockups},
+    "get_industry_comparison": {"a_share": get_ashare_industry},
 }
 
 

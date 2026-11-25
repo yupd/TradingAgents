@@ -60,7 +60,6 @@ DATED_TOOLS = [
     tools.get_news,
     tools.get_global_news,
     tools.get_indicators,
-    tools.get_macro_indicators,
     tools.get_verified_market_snapshot,
 ]
 

@@ -47,7 +47,7 @@ def test_yfinance_keeps_its_cache_out_of_the_users_home():
 
 
 @pytest.mark.unit
-@pytest.mark.parametrize("key", ["results_dir", "data_cache_dir", "memory_log_path"])
+@pytest.mark.parametrize("key", ["results_dir", "data_cache_dir"])
 def test_the_suite_keeps_its_files_out_of_the_users_home(key):
     """A test that reads the user's cache sees what their runs fetched, and passes
     or fails with it; one that writes there changes their data."""

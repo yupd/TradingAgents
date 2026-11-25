@@ -96,7 +96,7 @@ def _build_run_config(selections: dict, checkpoint: bool | None) -> dict:
     return config
 
 
-def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
+def run_analysis(checkpoint: bool | None = None, flags=None):
     flags = flags or {}
     # With no terminal nothing can answer a prompt: name every question still
     # open before any model is called, rather than stopping at the first one.
@@ -111,6 +111,9 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
     selections = get_user_selections(flags)
 
     config = _build_run_config(selections, checkpoint)
+    from tradingagents.dataflows.vendors.a_share.market import apply_default_market_config
+
+    config = apply_default_market_config(selections["ticker"], config)
 
     stats_handler = StatsCallbackHandler()
 
@@ -214,10 +217,9 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
         update_display(layout, spinner_text, stats_handler=stats_handler, start_time=start_time)
 
         # The same initial state propagate() builds, with the resolved
-        # instrument identity; the graph's Memory Log step settles past
-        # decisions and loads their lessons alongside the analysts.
+        # instrument identity.
         init_agent_state = graph.create_run_state(
-            selections["ticker"], selections["analysis_date"], selections["asset_type"], portfolio
+            selections["ticker"], selections["analysis_date"], selections["asset_type"]
         )
         # Pass callbacks to graph config for tool execution tracking
         # (LLM tracking is handled separately via LLM constructor)
@@ -227,7 +229,7 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
         # actually saves and resumes on the CLI path (#1249); a no-op when
         # checkpointing is disabled. Torn down in the finally below.
         checkpoint_tid = graph.begin_checkpoint(
-            selections["ticker"], selections["analysis_date"], selections["asset_type"], portfolio
+            selections["ticker"], selections["analysis_date"], selections["asset_type"]
         )
         if checkpoint_tid is not None:
             args.setdefault("config", {}).setdefault("configurable", {})["thread_id"] = checkpoint_tid
@@ -352,7 +354,7 @@ def run_analysis(checkpoint: bool | None = None, portfolio=None, flags=None):
             # the checkpoint for resume.
             graph.record_decision(selections["ticker"], selections["analysis_date"], final_state)
             graph.clear_checkpoint_on_success(
-                selections["ticker"], selections["analysis_date"], selections["asset_type"], portfolio
+                selections["ticker"], selections["analysis_date"], selections["asset_type"]
             )
         finally:
             # Always restore the plain uncheckpointed graph, even on failure.
@@ -462,3 +464,59 @@ def _offer_reports(final_state, graph, ticker, save=None, show=None, html=None):
         show = typer.prompt("\nDisplay full report on screen?", default="Y").strip().upper() in ("Y", "YES", "")
     if show:
         display_complete_report(final_state)
+
+
+def run_brief(trade_date: str | None = None, watchlist: str = "watchlist.yaml"):
+    """Collect facts, compute rule flags and write one Markdown brief."""
+    from datetime import date
+    from pathlib import Path
+
+    from brief.fetch import collect_facts
+    from brief.render import render_brief
+    from brief.rules import compute_flags
+    from brief.summarize import safe_summarize
+    from brief.watchlist import load_watchlist
+    from tradingagents.default_config import DEFAULT_CONFIG
+    from tradingagents.llm_clients import create_tier_client
+
+    day = trade_date or date.today().isoformat()
+    items = load_watchlist(Path(watchlist))
+    llm = create_tier_client(dict(DEFAULT_CONFIG), "quick").get_llm()
+    entries = []
+    # shortcut: 串行取数，30 只以内够用；更长的自选池再改成并发（上限 3）。
+    for item in items:
+        facts = collect_facts(item, day)
+        entries.append(safe_summarize(facts, compute_flags(facts), llm))
+    return render_brief(day, entries, Path("reports") / "brief")
+
+
+def run_deep(code: str, date: str | None = None, selected_analysts: list[str] | None = None,
+             debate: int | None = None, resume: bool = False) -> int:
+    """Run the full graph for one instrument and write its report tree."""
+    from datetime import date as _date
+    from pathlib import Path
+
+    from tradingagents.dataflows.vendors.a_share.calendar import previous_trade_date
+    from tradingagents.dataflows.vendors.a_share.market import apply_market_config, market_of
+    from tradingagents.default_config import DEFAULT_CONFIG
+    from tradingagents.graph.trading_graph import TradingAgentsGraph
+    from tradingagents.reporting import write_report_tree
+
+    market = market_of(code)
+    day = date or _date.today().isoformat()
+    if market == "CN":
+        try:
+            day = previous_trade_date(day)
+        except Exception:
+            # The calendar is unreachable; keep the user's date rather than crash.
+            pass
+    cfg = apply_market_config(code, DEFAULT_CONFIG)
+    cfg = {**cfg, "checkpoint_enabled": True}
+    if debate is not None:
+        cfg = {**cfg, "max_debate_rounds": debate, "max_risk_discuss_rounds": max(1, debate - 1)}
+    analysts = tuple(selected_analysts or ("market", "social", "news", "fundamentals"))
+    graph = TradingAgentsGraph(selected_analysts=analysts, config=cfg)
+    state, _signal = graph.propagate(code, day)
+    out = Path("reports") / "deep" / code.upper().replace(".", "_") / day
+    write_report_tree(state, code, out, settings={**graph.run_settings(), "data_as_of": day})
+    return 0

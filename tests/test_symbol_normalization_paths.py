@@ -10,7 +10,6 @@ import pandas as pd
 import tradingagents.agents.context as au
 import tradingagents.dataflows.vendors.yahoo.market as yahoo_market
 import tradingagents.dataflows.vendors.yahoo.news as ynews
-from tradingagents.memory import settlement
 
 
 def test_identity_lookup_normalizes_symbol(monkeypatch):
@@ -31,31 +30,6 @@ def test_identity_lookup_normalizes_symbol(monkeypatch):
 
     assert seen["symbol"] == "GC=F"  # normalized, not the raw broker symbol
     assert identity.get("company_name") == "Gold Futures"
-
-
-def test_fetch_returns_normalizes_symbol(monkeypatch):
-    queried = []
-
-    class FakeTicker:
-        def __init__(self, symbol):
-            queried.append(symbol)
-
-        def history(self, *args, **kwargs):
-            prices = [100.0, 101.0, 102.0, 103.0, 104.0, 105.0, 106.0]
-            idx = pd.date_range(start="2025-01-02", periods=len(prices), freq="D")
-            return pd.DataFrame({"Close": prices}, index=idx)
-
-    monkeypatch.setattr(yahoo_market.yf, "Ticker", FakeTicker)
-
-    raw, alpha, days, resolved = settlement.fetch_returns(
-        "XAUUSD", "2025-01-02", holding_days=5, benchmark="SPY"
-    )
-
-    assert queried[0] == "GC=F"  # stock symbol normalized (#984)
-    assert queried[1] == "SPY"   # benchmark left as the canonical symbol
-    assert raw is not None and days is not None
-    assert resolved == "2025-01-08"  # resolution date recorded (#1251)
-
 
 def test_news_lookup_normalizes_symbol(monkeypatch):
     seen = {}

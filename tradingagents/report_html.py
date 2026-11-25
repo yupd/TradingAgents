@@ -226,6 +226,8 @@ def _run_details(final_state: dict, settings: dict | None) -> list[tuple[str, st
     details = [("Generated", escape(datetime.now().strftime("%Y-%m-%d %H:%M")))]
     if settings:
         s = settings.get
+        if s("data_as_of"):
+            details.append(("Data as of", escape(str(s("data_as_of")))))
         for tier in ("deep", "quick"):
             provider = s(f"{tier}_think_provider") or s("llm_provider", "?")
             details.append((f"{tier.capitalize()} model", _fields([provider, s(f"{tier}_think_llm", "?")])))
@@ -240,8 +242,6 @@ def _run_details(final_state: dict, settings: dict | None) -> list[tuple[str, st
                 _group(_CATEGORY.get(k, k), _chain(v)) for k, v in vendors.items()
             )))
         details.append(("Version", escape(f"TradingAgents {s('version', '?')}")))
-    if final_state.get("memory_note"):
-        details.append(("Memory log", escape(final_state["memory_note"])))
     return details
 
 

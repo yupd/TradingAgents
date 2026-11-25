@@ -9,10 +9,9 @@ from typing import Annotated, Literal
 from langchain_core.tools import tool
 from langgraph.prebuilt import InjectedState
 
-from tradingagents.dataflows.date_window import as_of, as_of_window
+from tradingagents.dataflows.date_window import as_of, as_of_window, is_historical
 from tradingagents.dataflows.errors import NoMarketDataError, VendorUnavailableError
 from tradingagents.dataflows.router import no_data_available, route_to_vendor, vendor_unavailable
-from tradingagents.dataflows.vendors.yahoo.snapshot import build_verified_market_snapshot
 
 
 @tool
@@ -87,7 +86,7 @@ def get_verified_market_snapshot(
     """
     # An exception out of a tool would end the run.
     try:
-        return build_verified_market_snapshot(symbol, as_of(curr_date, trade_date), look_back_days)
+        return route_to_vendor("get_verified_market_snapshot", symbol, as_of(curr_date, trade_date), look_back_days)
     except VendorUnavailableError as exc:
         return vendor_unavailable("get_verified_market_snapshot", exc)
     except NoMarketDataError as exc:
@@ -230,62 +229,86 @@ def get_insider_transactions(
 
 
 @tool
-def get_macro_indicators(
-    indicator: Annotated[
-        str,
-        "Macro indicator: a friendly alias such as 'cpi', 'core_pce', "
-        "'unemployment', 'fed_funds_rate', '10y_treasury', 'yield_curve', "
-        "'real_gdp', 'vix', euro-area aliases such as 'ecb_deposit_rate', "
-        "'euro_hicp', 'euro_core_hicp', 'euro_real_gdp', 'germany_10y', "
-        "'france_10y', 'eur_usd', or a raw FRED series ID such as 'CPIAUCSL'.",
-    ],
-    curr_date: Annotated[str, "Current date in yyyy-mm-dd format; the end of the window"],
-    look_back_days: Annotated[
-        int | None, "Trailing window length in days; omit for a 1-year window"
-    ] = None,
+def get_profit_forecast(
+    ticker: Annotated[str, InjectedState("company_of_interest")],
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
     trade_date: Annotated[str, InjectedState("trade_date")] = "",
 ) -> str:
-    """
-    Retrieve a macroeconomic indicator time series from FRED (Federal Reserve
-    Economic Data): policy rates, Treasury yields, inflation, labor, and growth,
-    for the US and, through FRED's mirrored series, the euro area.
-    Returns the series title, units, frequency, the latest value, the change
-    over the window, and a recent observation table. Uses the configured
-    macro_data vendor.
-
-    Args:
-        indicator (str): Friendly alias or raw FRED series ID
-        curr_date (str): Current date in yyyy-mm-dd format
-        look_back_days (int): Trailing window length; omit for a 1-year window
-
-    Returns:
-        str: A formatted markdown report of the macro series
-    """
-    return route_to_vendor("get_macro_indicators", indicator, as_of(curr_date, trade_date), look_back_days)
+    """Consensus EPS forecast and coverage for an A-share, with a look-ahead warning on past runs."""
+    return route_to_vendor("get_profit_forecast", ticker, as_of(curr_date, trade_date))
 
 
 @tool
-def get_prediction_markets(
-    topic: Annotated[
-        str,
-        "Event topic/keyword, e.g. 'Fed rate cut', 'recession 2026', "
-        "'US election', or a sector/company event.",
-    ],
-    limit: Annotated[int | None, "Max markets to return; omit for a default of 6"] = None,
+def get_hot_stocks(
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format; empty for today"] = "",
     trade_date: Annotated[str, InjectedState("trade_date")] = "",
 ) -> str:
-    """
-    Retrieve live, market-implied probabilities for forward-looking events from
-    prediction markets (Polymarket): Fed decisions, recession, elections,
-    geopolitics, crypto. Returns the most-traded open markets matching the
-    topic, each with its implied probability, traded volume, resolution date,
-    and recent move. Uses the configured prediction_markets vendor.
+    """Today's hottest A-shares; only the current ranking exists, so past dates are refused."""
+    if is_historical(trade_date):
+        return f"历史日期不提供实时快照：热门榜只有当前版本（请求日 {trade_date}）"
+    return route_to_vendor("get_hot_stocks", as_of(curr_date, trade_date))
 
-    Args:
-        topic (str): Event keyword(s) to search
-        limit (int): Max markets to return; omit for a default of 6
 
-    Returns:
-        str: A formatted markdown report of matching prediction markets
-    """
-    return route_to_vendor("get_prediction_markets", topic, limit, trade_date or None)
+@tool
+def get_concept_blocks(
+    ticker: Annotated[str, InjectedState("company_of_interest")],
+    trade_date: Annotated[str, InjectedState("trade_date")] = "",
+) -> str:
+    """The industry, concept and region blocks an A-share belongs to."""
+    if is_historical(trade_date):
+        return f"历史日期不提供实时快照：板块归属只有当前版本（请求日 {trade_date}）"
+    return route_to_vendor("get_concept_blocks", ticker)
+
+
+@tool
+def get_fund_flow(
+    ticker: Annotated[str, InjectedState("company_of_interest")],
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    include_history: Annotated[bool, "Include the last 20 sessions"] = True,
+    trade_date: Annotated[str, InjectedState("trade_date")] = "",
+) -> str:
+    """Main-force versus retail fund flow for an A-share, daily or over 20 sessions."""
+    return route_to_vendor("get_fund_flow", ticker, as_of(curr_date, trade_date), include_history)
+
+
+@tool
+def get_northbound_flow(
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    include_history: Annotated[bool, "Include the last 20 sessions"] = False,
+    trade_date: Annotated[str, InjectedState("trade_date")] = "",
+) -> str:
+    """Northbound (沪深股通) net buying."""
+    return route_to_vendor("get_northbound_flow", as_of(curr_date, trade_date), include_history)
+
+
+@tool
+def get_dragon_tiger_board(
+    ticker: Annotated[str, InjectedState("company_of_interest")],
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    look_back_days: Annotated[int, "Days to look back"] = 30,
+    trade_date: Annotated[str, InjectedState("trade_date")] = "",
+) -> str:
+    """Dragon-tiger board appearances, seats and net buying for an A-share."""
+    return route_to_vendor("get_dragon_tiger_board", ticker, as_of(curr_date, trade_date), look_back_days)
+
+
+@tool
+def get_lockup_expiry(
+    ticker: Annotated[str, InjectedState("company_of_interest")],
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    forward_days: Annotated[int, "Days forward to check"] = 90,
+    trade_date: Annotated[str, InjectedState("trade_date")] = "",
+) -> str:
+    """Upcoming lockup expiries for an A-share."""
+    return route_to_vendor("get_lockup_expiry", ticker, as_of(curr_date, trade_date), forward_days)
+
+
+@tool
+def get_industry_comparison(
+    ticker: Annotated[str, InjectedState("company_of_interest")],
+    curr_date: Annotated[str, "Current date in yyyy-mm-dd format"],
+    top_n: Annotated[int, "How many industries to list"] = 20,
+    trade_date: Annotated[str, InjectedState("trade_date")] = "",
+) -> str:
+    """Industry performance ranking for sector-rotation context."""
+    return route_to_vendor("get_industry_comparison", ticker, as_of(curr_date, trade_date), top_n)

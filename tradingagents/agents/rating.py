@@ -31,6 +31,14 @@ RATING_REVIEW = "REVIEW"
 
 _RATING_SET = {r.lower() for r in RATINGS_5_TIER}
 
+# Chinese labels map onto the same five-tier scale.
+_CN_RATINGS = {"买入": "Buy", "增持": "Overweight", "持有": "Hold",
+               "减持": "Underweight", "卖出": "Sell"}
+_CN_LINE_RE = re.compile(
+    r"(?:rating|评级|投资建议|评分)\s*[:：\-\u2010-\u2015]?\s*[\s*_]*"
+    r"(买入|增持|持有|减持|卖出)", re.IGNORECASE)
+_CN_SUFFIX_RE = re.compile(r"(买入|增持|持有|减持|卖出)\s*评级")
+
 # Matches "Rating: X" / "rating - X" / "Rating — **X**" — tolerates markdown
 # bold wrappers and any dash or colon a model writes as the separator. "rating"
 # must start a word, so "Operating margin: Sell-side" is not a label.
@@ -86,6 +94,26 @@ def extract_rating(text: str) -> str | None:
         if m and not m.group("item") and m.group("value").lower() in _RATING_SET:
             own.append(m.group("value").capitalize())
         labels += [v.capitalize() for v in _RATING_LABEL_RE.findall(line) if v.lower() in _RATING_SET]
+    if own:
+        return own[0] if len(set(own)) == 1 else None
+
+    # A Chinese rating line is still the decision's own call; it outranks any
+    # English consensus label elsewhere in the text.
+    def _chinese(selected):
+        found = []
+        for line in selected:
+            for pattern in (_CN_LINE_RE, _CN_SUFFIX_RE):
+                found += [_CN_RATINGS[m.group(1)] for m in pattern.finditer(line)]
+        return found
+
+    # The decision's own Chinese line outranks a quoted consensus rating.
+    own_cn = _chinese([line for line in lines if "consensus" not in line.lower()])
+    if own_cn:
+        return own_cn[0] if len(set(own_cn)) == 1 else None
+    chinese = _chinese(lines)
+    if chinese:
+        return chinese[0] if len(set(chinese)) == 1 else None
+
     # Without a label there is no call to read: a rating word in the prose may be
     # one the text argues against ("not a Sell"), and reading it reports a
     # direction nobody decided.

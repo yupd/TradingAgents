@@ -35,14 +35,18 @@ def _header(ticker: str, final_state: dict, settings: dict | None) -> str:
             models = (f"deep {deep_provider} {s('deep_think_llm', '?')}, "
                       f"quick {quick_provider} {s('quick_think_llm', '?')}")
         lines.append(f"- TradingAgents {s('version', '?')}: {models}")
+        if s("deep_think_llm"):
+            lines.append(f"- Model: {s('deep_think_llm')}")
+        if deep_provider:
+            lines.append(f"- Provider: {deep_provider}")
+        if s("data_as_of"):
+            lines.append(f"- Data as of: {s('data_as_of')}")
         lines.append(f"- Analysts: {', '.join(analyst_names(s('analysts')))}; "
                      f"research debate rounds {s('max_debate_rounds', '?')}, "
                      f"risk debate rounds {s('max_risk_discuss_rounds', '?')}")
         vendors = {**(s("data_vendors") or {}), **(s("tool_vendors") or {})}
         if vendors:
             lines.append("- Data vendors: " + ", ".join(f"{k} {v}" for k, v in vendors.items()))
-    if final_state.get("memory_note"):
-        lines.append(f"- Memory log: {final_state['memory_note']}")
     return "\n".join(lines) + "\n\n"
 
 
@@ -53,6 +57,9 @@ _SECTIONS = (
         ("Sentiment Analyst", "sentiment.md", ("sentiment_report",)),
         ("News Analyst", "news.md", ("news_report",)),
         ("Fundamentals Analyst", "fundamentals.md", ("fundamentals_report",)),
+        ("Policy Analyst", "policy.md", ("policy_report",)),
+        ("Hot Money Analyst", "hot_money.md", ("hot_money_report",)),
+        ("Lockup Analyst", "lockup.md", ("lockup_report",)),
     )),
     ("II. Research Team Decision", "2_research", (
         ("Bull Researcher", "bull.md", ("investment_debate_state", "bull_history")),

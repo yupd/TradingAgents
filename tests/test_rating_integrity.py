@@ -69,48 +69,6 @@ def test_the_scale_quoted_in_a_prompt_does_not_become_the_rating():
 
 # --- the readers agree ------------------------------------------------------
 
-@pytest.mark.unit
-def test_the_memory_log_records_review_rather_than_a_tradeable_hold(tmp_path):
-    from tradingagents.memory import TradingMemoryLog
-
-    log = TradingMemoryLog({"memory_log_path": str(tmp_path / "m.md")})
-    log.store_decision("NVDA", "2026-01-05", REFUSAL)
-
-    entry = log.load_entries()[0]
-    assert entry["rating"] == RATING_REVIEW
-
-
-@pytest.mark.unit
-def test_the_signal_and_the_log_agree_on_the_same_decision(tmp_path):
-    from tradingagents.agents.rating import parse_rating
-    from tradingagents.memory import TradingMemoryLog
-
-    log = TradingMemoryLog({"memory_log_path": str(tmp_path / "m.md")})
-    for text in (INVERTED, REFUSAL, "**Rating**: Buy\n\nAccumulate."):
-        log.store_decision("NVDA", f"2026-01-0{len(log.load_entries()) + 1}", text)
-
-    signals = [parse_rating(text)
-               for text in (INVERTED, REFUSAL, "**Rating**: Buy\n\nAccumulate.")]
-    assert [e["rating"] for e in log.load_entries()] == signals
-
-
-@pytest.mark.unit
-def test_an_unscored_decision_is_left_out_of_the_backtest_figures(tmp_path):
-    """REVIEW has no direction, so it cannot count for or against the system."""
-    from tradingagents.backtest import summarize
-    from tradingagents.memory import TradingMemoryLog
-
-    log = TradingMemoryLog({"memory_log_path": str(tmp_path / "m.md")})
-    log.store_decision("NVDA", "2026-01-05", "**Rating**: Buy\n\nx")
-    log.update_with_outcome("NVDA", "2026-01-05", 0.1, 0.04, 5, "note", "2026-02-01")
-    log.store_decision("AAPL", "2026-01-05", REFUSAL)
-    log.update_with_outcome("AAPL", "2026-01-05", 0.1, 0.04, 5, "note", "2026-02-01")
-
-    summary = summarize(tmp_path / "m.md")
-    assert set(summary.by_rating) == {"Buy"}
-
-
-@pytest.mark.unit
 def test_the_cli_says_when_a_run_produced_no_usable_rating(monkeypatch, tmp_path, capsys):
     """The CLI is the primary entry point; an unreadable decision must be
     visible there, not only in the log."""
