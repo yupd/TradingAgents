@@ -162,8 +162,6 @@ def build_default_config() -> dict:
         # overview and insider tools, which SEC EDGAR does not serve, from Yahoo.
         "fundamental_data": "sec_edgar,yfinance",  # Options: sec_edgar, alpha_vantage, yfinance
             "news_data": "yfinance",             # Options: alpha_vantage, yfinance
-            "macro_data": "fred",                # Options: fred (needs FRED_API_KEY)
-            "prediction_markets": "polymarket",  # Options: polymarket (keyless)
         },
         # Tool-level configuration (takes precedence over category-level)
         "tool_vendors": {
