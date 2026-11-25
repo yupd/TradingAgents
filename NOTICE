@@ -1,0 +1,24 @@
+TradingAgents-A-share (working title)
+=====================================
+
+This repository is a fork of Tauric Research's TradingAgents, branch 0.7.x
+(https://github.com/TauricResearch/TradingAgents), used under the Apache-2.0
+license. The upstream copyright and license notices are retained.
+
+A-share localization
+--------------------
+The A-share data vendor and the policy / hot-money / lockup analysts are
+adapted from:
+
+  - simonlin1212/TradingAgents-astock (Apache-2.0)
+    https://github.com/simonlin1212/tradingagents-astock
+  - hkwsg/TradingAgents-A-share (Apache-2.0)
+    https://github.com/hkwsg/TradingAgents-A-share
+
+Portions copied from those projects keep their original copyright headers
+and carry a note naming the source and the local changes.
+
+Data
+----
+A-share data is fetched from free public sources (mootdx, Eastmoney, Sina,
+Tencent, AkShare). It is for personal research only and is not redistributed.

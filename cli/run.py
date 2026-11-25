@@ -485,3 +485,31 @@ def run_brief(trade_date: str | None = None, watchlist: str = "watchlist.yaml"):
         facts = collect_facts(item, day)
         entries.append(summarize(facts, compute_flags(facts), llm))
     return render_brief(day, entries, Path("reports") / "brief")
+
+
+def run_deep(code: str, date: str | None = None, selected_analysts: list[str] | None = None,
+             debate: int | None = None) -> int:
+    """Run the full graph for one instrument and write its report tree."""
+    from datetime import date as _date
+    from pathlib import Path
+
+    from tradingagents.dataflows.vendors.a_share.calendar import previous_trade_date
+    from tradingagents.dataflows.vendors.a_share.market import apply_market_config, market_of
+    from tradingagents.default_config import DEFAULT_CONFIG
+    from tradingagents.graph.trading_graph import TradingAgentsGraph
+    from tradingagents.reporting import write_report_tree
+
+    market = market_of(code)
+    day = date or _date.today().isoformat()
+    if market == "CN":
+        day = previous_trade_date(day)
+    cfg = apply_market_config(code, DEFAULT_CONFIG)
+    cfg = {**cfg, "checkpoint_enabled": True}
+    if debate is not None:
+        cfg = {**cfg, "max_debate_rounds": debate, "max_risk_discuss_rounds": max(1, debate - 1)}
+    analysts = tuple(selected_analysts or ("market", "social", "news", "fundamentals"))
+    graph = TradingAgentsGraph(selected_analysts=analysts, config=cfg)
+    state, _signal = graph.propagate(code, day)
+    out = Path("reports") / "deep" / code.upper().replace(".", "_") / day
+    write_report_tree(state, code, out, settings={**graph.run_settings(), "data_as_of": day})
+    return 0

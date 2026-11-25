@@ -8,7 +8,7 @@ from rich.markup import escape
 from cli.display import console
 from cli.models import AnalystType, AssetType
 from cli.prompts import filter_analysts_for_asset_type, parse_analysts
-from cli.run import run_analysis, run_brief
+from cli.run import run_analysis, run_brief, run_deep
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients.openai_client import SIGNED_IN_PROVIDERS
 
@@ -86,6 +86,25 @@ def analyze(
             err=True,
         )
         raise typer.Exit(code=1) from None
+
+
+@app.command()
+def deep(
+    code: str = typer.Argument(..., help="A-share code or .HK code, e.g. 600519 or 0700.HK"),
+    date: str = typer.Argument(None, help="Trade date, YYYY-MM-DD; defaults to the latest session"),
+    debate: int = typer.Option(None, "--debate", help="Debate rounds; defaults to the config"),
+):
+    """Run the full multi-analyst deep dive for one instrument."""
+    from tradingagents.dataflows.vendors.a_share.market import market_of
+
+    try:
+        market = market_of(code)
+    except ValueError:
+        console.print(f"[red]Unsupported market for {code}: only A-share codes and .HK are served.[/red]")
+        raise typer.Exit(code=2) from None
+    analysts = (["market", "social", "news", "fundamentals", "policy", "hot_money", "lockup"]
+                if market == "CN" else ["market", "social", "news", "fundamentals"])
+    run_deep(code=code, date=date, selected_analysts=analysts, debate=debate)
 
 
 @app.command()

@@ -1,0 +1,8 @@
+# Daily brief watchlist. Codes stay strings; quote them if your editor rewrites them.
+stocks:
+  - code: "600519"
+    notes: 白酒龙头
+  - code: "000001"
+    notes: 银行
+  - code: "300750"
+    notes: 动力电池

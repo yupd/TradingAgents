@@ -35,6 +35,12 @@ def _header(ticker: str, final_state: dict, settings: dict | None) -> str:
             models = (f"deep {deep_provider} {s('deep_think_llm', '?')}, "
                       f"quick {quick_provider} {s('quick_think_llm', '?')}")
         lines.append(f"- TradingAgents {s('version', '?')}: {models}")
+        if s("deep_think_llm"):
+            lines.append(f"- Model: {s('deep_think_llm')}")
+        if deep_provider:
+            lines.append(f"- Provider: {deep_provider}")
+        if s("data_as_of"):
+            lines.append(f"- Data as of: {s('data_as_of')}")
         lines.append(f"- Analysts: {', '.join(analyst_names(s('analysts')))}; "
                      f"research debate rounds {s('max_debate_rounds', '?')}, "
                      f"risk debate rounds {s('max_risk_discuss_rounds', '?')}")
