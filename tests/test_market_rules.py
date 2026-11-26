@@ -162,6 +162,15 @@ def test_resolve_trade_date_rejects_invalid_format():
         resolve_trade_date("2026/11/26")
 
 
+def test_resolve_trade_date_rejects_unpadded_parts(monkeypatch):
+    monkeypatch.setattr("market.rules.previous_trade_date", lambda value: value)
+
+    with pytest.raises(ValueError):
+        resolve_trade_date("2026-1-1")
+    # A fully padded date still normalizes as before.
+    assert resolve_trade_date("2026-11-26") == ("2026-11-26", None)
+
+
 def test_broken_rate_normal():
     assert broken_rate(70, 30) == pytest.approx(30.0)
 

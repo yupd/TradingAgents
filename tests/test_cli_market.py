@@ -44,8 +44,31 @@ def test_market_command_rejects_bad_date(monkeypatch):
 
     monkeypatch.setattr(m, "run_market", refuse)
     result = CliRunner().invoke(m.app, ["market", "--date", "x"])
-    assert result.exit_code != 0
+    assert result.exit_code == 2
     assert "does not match format" in result.output
+
+
+@pytest.mark.unit
+def test_market_command_rejects_malformed_date_without_writing(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(m.app, ["market", "--date", "not-a-date"])
+
+    assert result.exit_code == 2
+    assert not (tmp_path / "reports" / "market").exists()
+
+
+@pytest.mark.unit
+def test_run_market_rejects_unpadded_date_before_fetch(monkeypatch):
+    def fail_fetch(trade_date):
+        raise AssertionError("fetch ran for an invalid date")
+
+    monkeypatch.setattr("market.fetch.fetch_indices", fail_fetch)
+
+    from cli.run import run_market
+
+    with pytest.raises(ValueError):
+        run_market("2026-1-1")
 
 
 @pytest.mark.unit

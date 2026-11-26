@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from datetime import date, datetime
 
@@ -87,11 +88,17 @@ def compute_flags(indices: list[IndexQuote], sentiment: Sentiment | None) -> lis
     return flags
 
 
+_ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
+
 def resolve_trade_date(
     requested: str | None = None, today: str | None = None
 ) -> tuple[str, str | None]:
     """Normalize the requested date to the latest trading day, recording a calendar gap."""
     target = requested or today or date.today().isoformat()
+    # strptime accepts unpadded parts like 2026-1-1; require the exact shape too.
+    if not _ISO_DATE.fullmatch(target):
+        raise ValueError(f"invalid date {target!r}, expected YYYY-MM-DD")
     datetime.strptime(target, "%Y-%m-%d")
     try:
         return previous_trade_date(target), None
