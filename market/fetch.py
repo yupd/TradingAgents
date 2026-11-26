@@ -70,6 +70,12 @@ class MarketNews:
     note: str = "媒体口径，未核实"
 
 
+@dataclass
+class NewsResult:
+    items: list[MarketNews]
+    gap: str | None = None
+
+
 @dataclass(frozen=True)
 class IndexSpec:
     name: str
@@ -413,10 +419,15 @@ def _parse_global_news(text: str) -> list[MarketNews]:
     ]
 
 
-def fetch_news(trade_date: str, look_back_days: int = 7, limit: int = 10) -> list[MarketNews]:
-    """Market-wide flashes; fetch errors propagate so the caller can record the gap."""
-    text = get_global_news(trade_date, look_back_days=look_back_days, limit=limit)
-    return _parse_global_news(text)
+def fetch_news(trade_date: str, look_back_days: int = 7, limit: int = 10) -> NewsResult:
+    """Market-wide flashes; a failed or empty source is recorded as a gap, never raised."""
+    try:
+        text = get_global_news(trade_date, look_back_days=look_back_days, limit=limit)
+    except Exception as exc:
+        logger.debug("news fetch failed: %s", exc)
+        return NewsResult([], gap=f"news: {type(exc).__name__}: {exc}")
+    items = _parse_global_news(text)
+    return NewsResult(items) if items else NewsResult([], gap="news: 无可用条目")
 
 
 @dataclass

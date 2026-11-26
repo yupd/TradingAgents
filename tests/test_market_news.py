@@ -65,10 +65,31 @@ def test_fetch_news_passes_arguments_and_returns_parsed_items(monkeypatch):
         return FORMATTED
 
     monkeypatch.setattr(fetch, "get_global_news", fake)
-    news = fetch.fetch_news("2026-11-26", look_back_days=3, limit=2)
+    result = fetch.fetch_news("2026-11-26", look_back_days=3, limit=2)
     assert calls == [("2026-11-26", 3, 2)]
-    assert [item.title for item in news] == [
+    assert result.gap is None
+    assert [item.title for item in result.items] == [
         "三大指数集体高开",
         "央行开展逆回购操作",
         "北向资金今日净流入",
     ]
+
+
+def test_fetch_news_records_gap_when_source_raises(monkeypatch):
+    def fake(curr_date, look_back_days=7, limit=10):
+        raise ConnectionError("boom")
+
+    monkeypatch.setattr(fetch, "get_global_news", fake)
+    result = fetch.fetch_news("2026-11-26")
+    assert result.items == []
+    assert result.gap.startswith("news:")
+    assert "ConnectionError" in result.gap
+
+
+def test_fetch_news_records_gap_for_sentinel(monkeypatch):
+    monkeypatch.setattr(
+        fetch, "get_global_news", lambda *a, **kw: "DATA_UNAVAILABLE: global news down"
+    )
+    result = fetch.fetch_news("2026-11-26")
+    assert result.items == []
+    assert result.gap.startswith("news:")
