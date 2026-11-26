@@ -184,7 +184,4 @@ def safe_summarize(facts: MarketFacts, llm) -> Summary:
     validated = validate_numbers(raw, facts_block(facts))
     if not validated.text:
         return Summary("摘要生成失败", validated.dropped)
-    if validated.dropped:
-        note = f"（已丢弃 {validated.dropped} 句模型输出，含未提供数字）"
-        return Summary(f"{validated.text}\n{note}", validated.dropped)
-    return validated
+    return Summary(validated.text, validated.dropped)

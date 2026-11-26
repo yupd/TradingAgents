@@ -193,11 +193,10 @@ def test_safe_summarize_degrades_when_all_sentences_dropped():
     assert result.dropped == 1
 
 
-def test_safe_summarize_keeps_valid_sentences_and_notes_dropped():
+def test_safe_summarize_keeps_valid_sentences_and_dropped_count():
     llm = _FakeLLM("- 上证收于 3456.78。\n- 目标 9999 点。")
     result = safe_summarize(_full_facts(), llm)
 
-    assert result.text.startswith("- 上证收于 3456.78。")
-    assert "9999" not in result.text
-    assert "已丢弃 1 句" in result.text
+    assert result.text == "- 上证收于 3456.78。"
     assert result.dropped == 1
+    assert "已丢弃" not in result.text

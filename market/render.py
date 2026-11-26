@@ -67,6 +67,8 @@ def _conclusion(facts: MarketFacts, summary: Summary) -> str:
     if summary.text:
         lines.append(summary.text)
     lines.extend(f"- {flag.label}：{flag.detail}" for flag in facts.flags)
+    if summary.dropped > 0:
+        lines.append(f"（已丢弃 {summary.dropped} 句模型输出，含未提供数字）")
     return "\n".join(lines)
 
 

@@ -159,6 +159,17 @@ def _section(report: str, heading: str) -> str:
     return after.split("\n\n## ", 1)[0]
 
 
+def test_dropped_note_lands_after_flag_bullets_in_conclusion():
+    report = render_market(_full_facts(), Summary("指数放量上行。", dropped=1))
+    section = _section(report, "结论")
+    flag = "- 放量：沪深300 20 日量能倍数 1.30"
+    note = "（已丢弃 1 句模型输出，含未提供数字）"
+
+    assert section.splitlines()[-1] == note
+    assert section.index(flag) < section.index(note)
+    assert report.count(note) == 1
+
+
 def test_none_index_fields_render_unavailable_without_stray_units():
     facts = MarketFacts(
         trade_date="2026-11-26",
