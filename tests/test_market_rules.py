@@ -1,5 +1,7 @@
 """Unit tests for the multi-period index metrics in ``market.rules``."""
 
+from dataclasses import replace
+
 import pytest
 
 from market.fetch import IndexSpec
@@ -66,6 +68,22 @@ def test_build_index_quote_window_edges():
         1020 / (sum(range(1000, 1020)) / 20)
     )
     assert at_twenty_one.ma60 is None
+
+    at_sixty = build_index_quote(SPEC, _bars(60))
+    assert at_sixty.ma60 == pytest.approx(sum(range(100, 160)) / 60)
+    assert at_sixty.return_60d is None
+
+    at_sixty_one = build_index_quote(SPEC, _bars(61))
+    assert at_sixty_one.return_60d == pytest.approx((160 / 100 - 1) * 100)
+
+
+def test_build_index_quote_zero_volume_baseline_yields_none():
+    bars = [replace(bar, volume=0.0) for bar in _bars(21)[:-1]]
+    bars.append(replace(_bars(21)[-1], volume=1000.0))
+
+    quote = build_index_quote(SPEC, bars)
+
+    assert quote.volume_ratio is None
 
 
 def test_build_index_quote_leaves_unavailable_windows_none():
