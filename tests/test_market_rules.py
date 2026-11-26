@@ -1,0 +1,90 @@
+"""Unit tests for the multi-period index metrics in ``market.rules``."""
+
+import pytest
+
+from market.fetch import IndexSpec
+from market.rules import build_index_quote
+from tradingagents.dataflows.vendors.a_share.types import DailyBar
+
+SPEC = IndexSpec(name="上证", code="sh000001", exchange="SH")
+
+
+def _bars(count: int, source: str = "tencent") -> list[DailyBar]:
+    """``count`` bars whose close is 100+i and volume is 1000+i."""
+    date = "2026-10-{:02d}"
+    return [
+        DailyBar(
+            date=date.format(i + 1),
+            open=100.0 + i,
+            high=101.0 + i,
+            low=99.0 + i,
+            close=100.0 + i,
+            volume=1000.0 + i,
+            source=source,
+            as_of=date.format(i + 1),
+        )
+        for i in range(count)
+    ]
+
+
+def test_build_index_quote_uses_expected_windows():
+    bars = _bars(100)
+    quote = build_index_quote(SPEC, bars)
+
+    assert quote.name == "上证"
+    assert quote.code == "sh000001"
+    assert quote.source == "tencent"
+    assert quote.as_of == bars[-1].as_of
+    assert quote.close == pytest.approx(199.0)
+    # Latest close vs the previous close.
+    assert quote.change_pct == pytest.approx((199 / 198 - 1) * 100)
+    # closes[-6], closes[-21] and closes[-61] are 194, 179 and 139.
+    assert quote.return_5d == pytest.approx((199 / 194 - 1) * 100)
+    assert quote.return_20d == pytest.approx((199 / 179 - 1) * 100)
+    assert quote.return_60d == pytest.approx((199 / 139 - 1) * 100)
+    # Means of closes 180..199 and 140..199.
+    assert quote.ma20 == pytest.approx(189.5)
+    assert quote.ma60 == pytest.approx(169.5)
+    # Today's volume over the 20 sessions before it (1079..1098).
+    assert quote.volume_ratio == pytest.approx(1099 / 1088.5)
+
+
+def test_build_index_quote_window_edges():
+    at_six = build_index_quote(SPEC, _bars(6))
+    assert at_six.return_5d == pytest.approx((105 / 100 - 1) * 100)
+    assert at_six.return_20d is None
+
+    at_twenty = build_index_quote(SPEC, _bars(20))
+    assert at_twenty.ma20 == pytest.approx(sum(range(100, 120)) / 20)
+    assert at_twenty.return_20d is None
+    assert at_twenty.volume_ratio is None
+
+    at_twenty_one = build_index_quote(SPEC, _bars(21))
+    assert at_twenty_one.return_20d == pytest.approx((120 / 100 - 1) * 100)
+    assert at_twenty_one.ma20 == pytest.approx(sum(range(101, 121)) / 20)
+    assert at_twenty_one.volume_ratio == pytest.approx(
+        1020 / (sum(range(1000, 1020)) / 20)
+    )
+    assert at_twenty_one.ma60 is None
+
+
+def test_build_index_quote_leaves_unavailable_windows_none():
+    quote = build_index_quote(SPEC, _bars(5))
+
+    assert quote.close == pytest.approx(104.0)
+    assert quote.change_pct == pytest.approx((104 / 103 - 1) * 100)
+    assert quote.return_5d is None
+    assert quote.return_20d is None
+    assert quote.return_60d is None
+    assert quote.ma20 is None
+    assert quote.ma60 is None
+    assert quote.volume_ratio is None
+
+
+def test_build_index_quote_with_no_bars():
+    quote = build_index_quote(SPEC, [])
+
+    assert quote.name == "上证"
+    assert quote.code == "sh000001"
+    assert quote.close is None
+    assert quote.change_pct is None
