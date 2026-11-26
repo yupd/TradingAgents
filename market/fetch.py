@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 
 from tradingagents.dataflows.vendors.a_share import http
@@ -86,6 +87,79 @@ def _tencent_index_bars(spec: IndexSpec, start: str, end: str) -> list[DailyBar]
                 )
             )
     return bars
+
+
+def _sina_index_bars(spec: IndexSpec, start: str, end: str) -> list[DailyBar]:
+    """Daily bars for one index from Sina's JSONP kline API."""
+    response = http.em_get(
+        "https://quotes.sina.cn/cn/api/jsonp_v2.php/x/CN_MarketDataService.getKLineData",
+        params={"symbol": spec.code, "scale": 240, "ma": "no", "datalen": 1023},
+    )
+    text = response.text
+    rows = json.loads(text[text.index("(") + 1 : text.rindex(")")])
+    bars = []
+    for row in rows:
+        date = str(row["day"])
+        if start <= date <= end:
+            bars.append(
+                DailyBar(
+                    date=date,
+                    open=float(row["open"]),
+                    high=float(row["high"]),
+                    low=float(row["low"]),
+                    close=float(row["close"]),
+                    volume=float(row["volume"]),
+                    source="sina",
+                    as_of=date,
+                )
+            )
+    return bars
+
+
+def _em_index_bars(spec: IndexSpec, start: str, end: str) -> list[DailyBar]:
+    """Daily bars for one index from Eastmoney's kline API."""
+    response = http.em_get(
+        "https://push2his.eastmoney.com/api/qt/stock/kline/get",
+        params={
+            "secid": f"{1 if spec.exchange == 'SH' else 0}.{spec.code[2:]}",
+            "fields1": "f1,f2,f3,f4,f5,f6",
+            "fields2": "f51,f52,f53,f54,f55,f56",
+            "klt": 101,
+            "fqt": 1,
+            "beg": start.replace("-", ""),
+            "end": end.replace("-", ""),
+        },
+    )
+    klines = (response.json().get("data") or {}).get("klines") or []
+    bars = []
+    for line in klines:
+        date, open_, close, high, low, volume = (str(value) for value in line.split(",")[:6])
+        if start <= date <= end:
+            bars.append(
+                DailyBar(
+                    date=date,
+                    open=float(open_),
+                    high=float(high),
+                    low=float(low),
+                    close=float(close),
+                    volume=float(volume),
+                    source="eastmoney",
+                    as_of=date,
+                )
+            )
+    return bars
+
+
+def fetch_index_bars(spec: IndexSpec, start: str, end: str) -> list[DailyBar] | None:
+    """The first source that returns bars wins; ``None`` when all three fail."""
+    for fetch in (_tencent_index_bars, _sina_index_bars, _em_index_bars):
+        try:
+            bars = fetch(spec, start, end)
+        except Exception:
+            continue
+        if bars:
+            return bars
+    return None
 
 
 @dataclass
