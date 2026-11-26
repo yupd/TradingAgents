@@ -152,3 +152,77 @@ def test_gaps_render_as_bullets_and_northbound_is_absent():
     assert "## 数据缺口" in report
     assert "- news: 无可用条目" in report
     assert "北向资金" not in report
+
+
+def _section(report: str, heading: str) -> str:
+    after = report.split(f"## {heading}\n\n", 1)[1]
+    return after.split("\n\n## ", 1)[0]
+
+
+def test_none_index_fields_render_unavailable_without_stray_units():
+    facts = MarketFacts(
+        trade_date="2026-11-26",
+        indices=[IndexQuote(name="上证", code="sh000001")],
+    )
+
+    report = render_market(facts, Summary(""))
+
+    assert (
+        "| 上证 | 不可用 | 不可用 | 不可用 | 不可用 | 不可用 "
+        "| 不可用 | 不可用 | 不可用 |"
+    ) in report
+    assert _section(report, "指数趋势").endswith("来源：不可用 | As of: 不可用")
+    assert "不可用%" not in report
+    assert "不可用 亿元" not in report
+
+
+def test_missing_turnover_renders_three_unavailable_and_source_line():
+    report = render_market(MarketFacts(trade_date="2026-11-26"), Summary(""))
+
+    section = _section(report, "两市成交额")
+    assert "| 沪市 | 不可用 |" in section
+    assert "| 深市 | 不可用 |" in section
+    assert "| 合计 | 不可用 |" in section
+    assert section.endswith("来源：不可用 | As of: 不可用")
+    assert "不可用 亿元" not in section
+
+
+def test_missing_sentiment_renders_five_unavailable_and_source_line():
+    report = render_market(MarketFacts(trade_date="2026-11-26"), Summary(""))
+
+    section = _section(report, "市场情绪")
+    assert (
+        "涨停 不可用 / 跌停 不可用 / 炸板 不可用；"
+        "炸板率 不可用；最高连板 不可用"
+    ) in section
+    assert section.endswith("来源：不可用 | As of: 不可用")
+    assert "不可用%" not in section
+
+
+def test_missing_industries_renders_data_unavailable_and_source_line():
+    report = render_market(MarketFacts(trade_date="2026-11-26"), Summary(""))
+
+    section = _section(report, "行业强弱")
+    assert "涨幅前5：数据不可用" in section
+    assert "跌幅前5：数据不可用" in section
+    assert section.endswith("来源：不可用 | As of: 不可用")
+
+
+def test_empty_news_renders_data_unavailable():
+    report = render_market(MarketFacts(trade_date="2026-11-26"), Summary(""))
+
+    assert "## 新闻与政策\n\n数据不可用" in report
+
+
+def test_empty_gaps_render_none_marker():
+    report = render_market(MarketFacts(trade_date="2026-11-26"), Summary(""))
+
+    assert "## 数据缺口\n\n无" in report
+
+
+def test_empty_indices_render_data_unavailable_for_pinned_date():
+    report = render_market(MarketFacts(trade_date="2026-11-26"), Summary(""))
+
+    assert "## 指数趋势\n\n数据不可用" in report
+    assert "不可用%" not in report
+    assert "不可用 亿元" not in report
