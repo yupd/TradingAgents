@@ -4,13 +4,14 @@ from dataclasses import replace
 
 import pytest
 
-from market.fetch import IndexQuote, IndexSpec, Sentiment
+from market.fetch import IndexQuote, IndexSpec, Industries, NewsResult, Sentiment, Turnover
 from market.rules import (
     Flag,
     Trend,
     broken_rate,
     build_index_quote,
     classify_trend,
+    collect_gaps,
     compute_flags,
     resolve_trade_date,
 )
@@ -176,6 +177,61 @@ def test_broken_rate_missing_input():
 
 def test_broken_rate_zero_broken():
     assert broken_rate(3, 0) == pytest.approx(0.0)
+
+
+def _full_gap_inputs():
+    """Everything present: one quote, both turnover sides, all sentiment pools."""
+    indices = [IndexQuote(name="上证", code="sh000001", close=3000.0)]
+    turnover = Turnover(sh=4000.0, sz=7314.446)
+    sentiment = Sentiment(limit_up=50, broken=6, limit_down=2)
+    industries = Industries(gainers=[], losers=[], as_of="2026-11-26")
+    return indices, turnover, sentiment, industries, NewsResult([])
+
+
+def test_collect_gaps_empty_when_all_present():
+    assert collect_gaps(*_full_gap_inputs()) == []
+
+
+def test_collect_gaps_lists_each_missing_item():
+    _, _, sentiment, industries, _ = _full_gap_inputs()
+    indices = [IndexQuote(name="上证", code="sh000001")]
+    turnover = Turnover(sh=None, sz=7314.446)
+    news = NewsResult([], gap="news: 无可用条目")
+
+    assert collect_gaps(indices, turnover, sentiment, industries, news) == [
+        "indices: 上证 取数失败",
+        "turnover: 沪市成交额不可用",
+        "news: 无可用条目",
+    ]
+
+
+def test_collect_gaps_keeps_industries_note():
+    indices, turnover, sentiment, _, news = _full_gap_inputs()
+    industries = Industries(
+        gainers=[], losers=[], as_of="2026-11-26", note="仅当日，历史不可用"
+    )
+
+    assert collect_gaps(indices, turnover, sentiment, industries, news) == [
+        "industries: 仅当日，历史不可用"
+    ]
+
+
+def test_collect_gaps_deduplicates_extra():
+    indices, turnover, sentiment, industries, news = _full_gap_inputs()
+
+    assert collect_gaps(
+        indices, turnover, sentiment, industries, news, extra=["a", "a", "b"]
+    ) == ["a", "b"]
+
+
+def test_collect_gaps_whole_source_missing():
+    indices, _, _, _, news = _full_gap_inputs()
+
+    assert collect_gaps(indices, None, None, None, news) == [
+        "turnover: 成交额不可用",
+        "sentiment: 情绪数据不可用",
+        "industries: 行业榜不可用",
+    ]
 
 
 def _hs300(close=110.0, ma20=105.0, ma60=100.0, return_20d=5.0) -> IndexQuote:

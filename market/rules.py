@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from market.fetch import IndexQuote, IndexSpec, Sentiment
+from market.fetch import IndexQuote, IndexSpec, Industries, NewsResult, Sentiment, Turnover
 from tradingagents.dataflows.vendors.a_share.calendar import previous_trade_date
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
@@ -107,6 +107,45 @@ def broken_rate(limit_up: int | None, broken: int | None) -> float | None:
     if total == 0:
         return None
     return broken / total * 100
+
+
+def collect_gaps(
+    indices: list[IndexQuote],
+    turnover: Turnover | None,
+    sentiment: Sentiment | None,
+    industries: Industries | None,
+    news: NewsResult | None,
+    extra: list[str] | None = None,
+) -> list[str]:
+    """Every unavailable item as one line, in fixed order, de-duplicated."""
+    gaps: list[str] = []
+    for quote in indices:
+        if quote.close is None:
+            gaps.append(f"indices: {quote.name} 取数失败")
+    if turnover is None:
+        gaps.append("turnover: 成交额不可用")
+    else:
+        if turnover.sh is None:
+            gaps.append("turnover: 沪市成交额不可用")
+        if turnover.sz is None:
+            gaps.append("turnover: 深市成交额不可用")
+    if sentiment is None:
+        gaps.append("sentiment: 情绪数据不可用")
+    else:
+        if sentiment.limit_up is None:
+            gaps.append("sentiment: 涨停池不可用")
+        if sentiment.broken is None:
+            gaps.append("sentiment: 炸板池不可用")
+        if sentiment.limit_down is None:
+            gaps.append("sentiment: 跌停池不可用")
+    if industries is None:
+        gaps.append("industries: 行业榜不可用")
+    elif industries.note:
+        gaps.append(f"industries: {industries.note}")
+    if news is not None and news.gap:
+        gaps.append(news.gap)
+    gaps.extend(extra or [])
+    return list(dict.fromkeys(gaps))
 
 
 def _return(closes: list[float], days: int) -> float | None:
