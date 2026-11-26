@@ -163,6 +163,50 @@ def test_run_market_raises_when_every_source_is_empty(monkeypatch):
 
 
 @pytest.mark.unit
+def test_historical_industries_sentinel_does_not_bypass_empty_gate(monkeypatch):
+    _patch_empty_fetchers(monkeypatch)
+    monkeypatch.setattr(
+        "market.fetch.fetch_industries",
+        lambda trade_date: Industries(
+            gainers=[], losers=[], as_of=trade_date, note="仅当日，历史不可用"
+        ),
+    )
+
+    from cli.run import MarketDataUnavailable, run_market
+
+    with pytest.raises(MarketDataUnavailable):
+        run_market("2026-11-20")
+
+
+@pytest.mark.unit
+def test_llm_creation_failure_still_writes_report_with_exit_zero(monkeypatch, tmp_path):
+    day = "2026-11-26"
+    indices = [
+        IndexQuote(
+            name="沪深300", code="sh000300", close=100.0, source="tencent", as_of=day
+        )
+    ]
+    monkeypatch.setattr("market.rules.resolve_trade_date", lambda date: (day, None))
+    monkeypatch.setattr("market.fetch.fetch_indices", lambda trade_date: indices)
+    monkeypatch.setattr("market.fetch.fetch_turnover", lambda trade_date: Turnover())
+    monkeypatch.setattr("market.fetch.fetch_sentiment", lambda trade_date: Sentiment())
+    monkeypatch.setattr("market.fetch.fetch_industries", lambda trade_date: None)
+    monkeypatch.setattr("market.fetch.fetch_news", lambda trade_date: NewsResult([]))
+
+    def fail_create(config, tier):
+        raise RuntimeError("no api key")
+
+    monkeypatch.setattr("tradingagents.llm_clients.create_tier_client", fail_create)
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(m.app, ["market", "--date", day])
+
+    assert result.exit_code == 0
+    text = (tmp_path / "reports" / "market" / f"{day}.md").read_text(encoding="utf-8")
+    assert "摘要生成失败" in text
+
+
+@pytest.mark.unit
 def test_all_empty_skips_the_llm(monkeypatch):
     _patch_empty_fetchers(monkeypatch)
 

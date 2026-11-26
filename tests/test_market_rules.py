@@ -162,6 +162,12 @@ def test_resolve_trade_date_rejects_invalid_format():
         resolve_trade_date("2026/11/26")
 
 
+@pytest.mark.parametrize("requested", ["", "   "])
+def test_resolve_trade_date_rejects_blank_requested(requested):
+    with pytest.raises(ValueError):
+        resolve_trade_date(requested)
+
+
 def test_resolve_trade_date_rejects_unpadded_parts(monkeypatch):
     monkeypatch.setattr("market.rules.previous_trade_date", lambda value: value)
 
@@ -214,14 +220,13 @@ def test_collect_gaps_lists_each_missing_item():
     ]
 
 
-def test_collect_gaps_keeps_industries_note():
+@pytest.mark.parametrize("note", ["仅当日，历史不可用", "行业榜无数据"])
+def test_collect_gaps_keeps_industries_note(note):
     indices, turnover, sentiment, _, news = _full_gap_inputs()
-    industries = Industries(
-        gainers=[], losers=[], as_of="2026-11-26", note="仅当日，历史不可用"
-    )
+    industries = Industries(gainers=[], losers=[], as_of="2026-11-26", note=note)
 
     assert collect_gaps(indices, turnover, sentiment, industries, news) == [
-        "industries: 仅当日，历史不可用"
+        f"industries: {note}"
     ]
 
 

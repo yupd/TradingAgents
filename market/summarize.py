@@ -174,6 +174,24 @@ def validate_numbers(text: str, facts_text: str) -> Summary:
     return Summary("".join(kept).strip(), dropped)
 
 
+_TREND_WORDS = ("上行", "下行", "震荡")
+
+
+def _filter_claims(text: str, trend: Trend | None) -> str:
+    """Drop northbound sentences and trend wording that conflicts with the rule's level."""
+    level = getattr(trend, "level", None)
+    kept = []
+    for chunk in _SENTENCE_END.split(text):
+        if "北向" in chunk:
+            continue
+        if any(word in chunk for word in _TREND_WORDS) and (
+            level is None or level not in chunk
+        ):
+            continue
+        kept.append(chunk)
+    return "".join(kept).strip()
+
+
 def safe_summarize(facts: MarketFacts, llm) -> Summary:
     """Degrade to a fixed line when the model fails or every sentence is rejected."""
     try:
@@ -182,6 +200,7 @@ def safe_summarize(facts: MarketFacts, llm) -> Summary:
         logger.debug("market summary failed: %s", exc)
         return Summary("摘要生成失败", 0)
     validated = validate_numbers(raw, facts_block(facts))
-    if not validated.text:
+    text = _filter_claims(validated.text, facts.trend)
+    if not text:
         return Summary("摘要生成失败", validated.dropped)
-    return Summary(validated.text, validated.dropped)
+    return Summary(text, validated.dropped)

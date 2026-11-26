@@ -392,7 +392,9 @@ def _parse_industries(frame, as_of: str) -> Industries:
     import pandas as pd
 
     if frame is None or frame.empty or "板块" not in frame or "涨跌幅" not in frame:
-        return Industries(gainers=[], losers=[], as_of=as_of, source="同花顺")
+        return Industries(
+            gainers=[], losers=[], as_of=as_of, note="行业榜无数据", source="同花顺"
+        )
     pct = pd.to_numeric(frame["涨跌幅"], errors="coerce")
     valid = frame.assign(涨跌幅=pct).dropna(subset=["涨跌幅"])
     ranked = sorted(
@@ -437,7 +439,7 @@ def _parse_global_news(text: str) -> list[MarketNews]:
     return [
         MarketNews(**match.groupdict())
         for line in stripped.splitlines()
-        if (match := _NEWS_LINE.match(line))
+        if (match := _NEWS_LINE.match(line)) and "北向" not in match.group("title")
     ]
 
 

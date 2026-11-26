@@ -15,22 +15,20 @@ Source: 东财快讯 | As of: 2026-11-26 10:30
 """
 
 
-def test_parses_three_items_with_title_source_time_url_and_note():
+def test_parses_items_and_drops_northbound_ones():
     news = fetch._parse_global_news(FORMATTED)
-    assert len(news) == 3
+    assert len(news) == 2
     assert [item.title for item in news] == [
         "三大指数集体高开",
         "央行开展逆回购操作",
-        "北向资金今日净流入",
     ]
-    assert [item.source for item in news] == ["东财快讯"] * 3
+    assert [item.source for item in news] == ["东财快讯"] * 2
     assert [item.published_at for item in news] == [
         "2026-11-26 10:30",
         "2026-11-26 09:15",
-        "2026-11-25 16:02",
     ]
     # 裸 URL 行按需求忽略，不并入条目。
-    assert [item.url for item in news] == [None, None, None]
+    assert [item.url for item in news] == [None, None]
     assert all(item.note == "媒体口径，未核实" for item in news)
 
 
@@ -71,7 +69,6 @@ def test_fetch_news_passes_arguments_and_returns_parsed_items(monkeypatch):
     assert [item.title for item in result.items] == [
         "三大指数集体高开",
         "央行开展逆回购操作",
-        "北向资金今日净流入",
     ]
 
 

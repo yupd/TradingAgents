@@ -506,7 +506,7 @@ def run_market(date: str | None = None) -> Path:
     )
     from market.render import render_market
     from market.rules import classify_trend, collect_gaps, compute_flags, resolve_trade_date
-    from market.summarize import safe_summarize
+    from market.summarize import Summary, safe_summarize
     from tradingagents.default_config import DEFAULT_CONFIG
     from tradingagents.llm_clients import create_tier_client
 
@@ -521,6 +521,9 @@ def run_market(date: str | None = None) -> Path:
         industries = None
         industries_gap = f"industries: {type(exc).__name__}: {exc}"
     news_result = fetch_news(day)
+    # A historical date yields an empty Industries with a note and no network,
+    # so the sentinel alone must not count as data.
+    industries_empty = industries is None or not (industries.gainers or industries.losers)
     # A report built from nothing is worse than no report: say every source
     # failed before the LLM or the output directory is touched.
     if (
@@ -530,7 +533,7 @@ def run_market(date: str | None = None) -> Path:
         and sentiment.limit_up is None
         and sentiment.limit_down is None
         and sentiment.broken is None
-        and industries is None
+        and industries_empty
         and not news_result.items
     ):
         raise MarketDataUnavailable("没有可用的市场数据，未生成报告")
@@ -559,8 +562,11 @@ def run_market(date: str | None = None) -> Path:
         gaps=gaps,
         sources=list(dict.fromkeys(quote.source for quote in indices if quote.source)),
     )
-    llm = create_tier_client(dict(DEFAULT_CONFIG), "quick").get_llm()
-    summary = safe_summarize(facts, llm)
+    try:
+        llm = create_tier_client(dict(DEFAULT_CONFIG), "quick").get_llm()
+        summary = safe_summarize(facts, llm)
+    except Exception:
+        summary = Summary("摘要生成失败")
     path = Path("reports") / "market" / f"{day}.md"
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render_market(facts, summary), encoding="utf-8")

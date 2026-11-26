@@ -61,9 +61,19 @@ def _table(header, rows) -> str:
     return "\n".join(lines)
 
 
+def _yes_no(value: bool | None) -> str:
+    return _NA if value is None else ("是" if value else "否")
+
+
 def _conclusion(facts: MarketFacts, summary: Summary) -> str:
     trend = getattr(facts.trend, "level", None) or "无法判定"
-    lines = [f"趋势：{trend}"]
+    decision = facts.trend
+    lines = [
+        f"趋势：{trend}",
+        f"收盘>MA20：{_yes_no(getattr(decision, 'close_above_ma20', None))}",
+        f"MA20>MA60：{_yes_no(getattr(decision, 'ma20_above_ma60', None))}",
+        f"20日涨跌>0：{_yes_no(getattr(decision, 'return_20d_positive', None))}",
+    ]
     if summary.text:
         lines.append(summary.text)
     lines.extend(f"- {flag.label}：{flag.detail}" for flag in facts.flags)
@@ -92,6 +102,8 @@ def _indices(facts: MarketFacts) -> str:
     return "\n".join(
         [
             _table(_INDEX_COLUMNS, rows),
+            "",
+            "20日量能倍数按指数成交量计算（指数成交量口径）",
             "",
             f"来源：{_join(quote.source for quote in facts.indices)} | "
             f"As of: {_join(quote.as_of for quote in facts.indices)}",
@@ -154,7 +166,7 @@ def _industries(industries) -> str:
 
 def _news(news) -> str:
     if not news:
-        return _UNAVAILABLE
+        return f"{_UNAVAILABLE}\n\n来源：东财快讯 | As of: {_NA}"
     return "\n".join(
         f"- [{item.source} {item.published_at}] {item.title}（媒体口径，未核实）"
         for item in news
@@ -178,7 +190,7 @@ def render_market(facts: MarketFacts, summary: Summary) -> str:
     }
     lines = [
         f"# A 股大盘复盘 {facts.trade_date}",
-        f"数据截止：{facts.trade_date} 15:00",
+        f"行情截止：{facts.trade_date} 15:00；行业/新闻为运行时刻快照",
     ]
     for heading in _HEADINGS:
         lines += ["", f"## {heading}", "", sections[heading]]

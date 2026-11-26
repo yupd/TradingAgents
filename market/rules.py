@@ -95,7 +95,10 @@ def resolve_trade_date(
     requested: str | None = None, today: str | None = None
 ) -> tuple[str, str | None]:
     """Normalize the requested date to the latest trading day, recording a calendar gap."""
-    target = requested or today or date.today().isoformat()
+    target = requested if requested is not None else (today or date.today().isoformat())
+    target = target.strip()
+    if not target:
+        raise ValueError(f"invalid date {target!r}, expected YYYY-MM-DD")
     # strptime accepts unpadded parts like 2026-1-1; require the exact shape too.
     if not _ISO_DATE.fullmatch(target):
         raise ValueError(f"invalid date {target!r}, expected YYYY-MM-DD")

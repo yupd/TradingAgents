@@ -1,4 +1,5 @@
 import pandas as pd
+import pytest
 
 from market.fetch import (
     IndexQuote,
@@ -78,7 +79,10 @@ def test_seven_sections_appear_in_fixed_order():
         "## 新闻与政策",
         "## 数据缺口",
     ]
-    assert report.startswith("# A 股大盘复盘 2026-11-25\n数据截止：2026-11-25 15:00")
+    assert report.startswith(
+        "# A 股大盘复盘 2026-11-25\n"
+        "行情截止：2026-11-25 15:00；行业/新闻为运行时刻快照"
+    )
 
 
 def test_full_facts_render_values_flags_sources_and_news_label():
@@ -159,6 +163,59 @@ def _section(report: str, heading: str) -> str:
     return after.split("\n\n## ", 1)[0]
 
 
+@pytest.mark.parametrize(
+    ("trend", "expected"),
+    [
+        (Trend("上行", True, True, True), ("是", "是", "是")),
+        (Trend("下行", False, False, False), ("否", "否", "否")),
+        (Trend("震荡", True, True, False), ("是", "是", "否")),
+    ],
+)
+def test_conclusion_lists_rule_conditions_before_model_text(trend, expected):
+    facts = _full_facts()
+    facts.trend = trend
+    section = _section(render_market(facts, Summary("模型解释。")), "结论")
+
+    assert section.splitlines()[:4] == [
+        f"趋势：{trend.level}",
+        f"收盘>MA20：{expected[0]}",
+        f"MA20>MA60：{expected[1]}",
+        f"20日涨跌>0：{expected[2]}",
+    ]
+    assert section.index(f"趋势：{trend.level}") < section.index("模型解释。")
+
+
+def test_conclusion_keeps_rule_conditions_when_summary_failed():
+    section = _section(
+        render_market(_full_facts(), Summary("摘要生成失败")), "结论"
+    )
+
+    assert section.startswith(
+        "趋势：上行\n收盘>MA20：是\nMA20>MA60：是\n20日涨跌>0：是"
+    )
+    assert "摘要生成失败" in section
+
+
+def test_conclusion_without_trend_renders_three_unavailable():
+    section = _section(
+        render_market(MarketFacts(trade_date="2026-11-26"), Summary("")), "结论"
+    )
+
+    assert section.splitlines()[:4] == [
+        "趋势：无法判定",
+        "收盘>MA20：不可用",
+        "MA20>MA60：不可用",
+        "20日涨跌>0：不可用",
+    ]
+
+
+def test_index_table_footnote_names_volume_caliber():
+    section = _section(render_market(_full_facts(), Summary("")), "指数趋势")
+
+    assert "20日量能倍数按指数成交量计算（指数成交量口径）" in section
+    assert section.index("| 上证 |") < section.index("20日量能倍数按指数成交量计算")
+
+
 def test_dropped_note_lands_after_flag_bullets_in_conclusion():
     report = render_market(_full_facts(), Summary("指数放量上行。", dropped=1))
     section = _section(report, "结论")
@@ -219,10 +276,12 @@ def test_missing_industries_renders_data_unavailable_and_source_line():
     assert section.endswith("来源：不可用 | As of: 不可用")
 
 
-def test_empty_news_renders_data_unavailable():
+def test_empty_news_renders_data_unavailable_with_source_line():
     report = render_market(MarketFacts(trade_date="2026-11-26"), Summary(""))
 
-    assert "## 新闻与政策\n\n数据不可用" in report
+    assert (
+        "## 新闻与政策\n\n数据不可用\n\n来源：东财快讯 | As of: 不可用" in report
+    )
 
 
 def test_empty_gaps_render_none_marker():

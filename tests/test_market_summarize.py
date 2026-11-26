@@ -200,3 +200,36 @@ def test_safe_summarize_keeps_valid_sentences_and_dropped_count():
     assert result.text == "- 上证收于 3456.78。"
     assert result.dropped == 1
     assert "已丢弃" not in result.text
+
+
+def test_safe_summarize_drops_northbound_sentences():
+    llm = _FakeLLM("- 指数放量上行。\n- 北向资金今日净流入。")
+    result = safe_summarize(_full_facts(), llm)
+
+    assert "北向" not in result.text
+    assert "指数放量上行。" in result.text
+
+
+def test_safe_summarize_drops_conflicting_trend_level_sentence():
+    llm = _FakeLLM("- 指数放量上行。\n- 市场转为下行。")
+    result = safe_summarize(_full_facts(), llm)
+
+    assert "下行" not in result.text
+    assert result.text == "- 指数放量上行。"
+
+
+def test_safe_summarize_drops_trend_wording_when_trend_unknown():
+    facts = _full_facts()
+    facts.trend = None
+    llm = _FakeLLM("- 市场维持震荡。\n- 成交额 11500.46 亿元。")
+
+    result = safe_summarize(facts, llm)
+
+    assert "震荡" not in result.text
+    assert "11500.46" in result.text
+
+
+def test_safe_summarize_falls_back_when_every_claim_is_dropped():
+    result = safe_summarize(_full_facts(), _FakeLLM("- 市场转入下行。"))
+
+    assert result.text == "摘要生成失败"

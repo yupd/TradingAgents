@@ -57,6 +57,7 @@ def test_parse_industries_empty_frame_keeps_as_of():
 
     assert industries.gainers == []
     assert industries.losers == []
+    assert industries.note == "行业榜无数据"
     assert industries.as_of == "2026-11-26 15:00"
     assert industries.source == "同花顺"
 
