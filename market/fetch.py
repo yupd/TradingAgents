@@ -283,6 +283,25 @@ def fetch_limit_up(trade_date: str) -> tuple[int | None, int | None]:
     return _parse_limit_up(ak.stock_zt_pool_em(date=trade_date.replace("-", "")))
 
 
+def _parse_pool_count(frame) -> int:
+    """Stock count in a pool frame; an empty frame means zero."""
+    return len(frame)
+
+
+def fetch_broken_pool(trade_date: str) -> int:
+    """Eastmoney broken-board pool count; errors propagate."""
+    import akshare as ak
+
+    return _parse_pool_count(ak.stock_zt_pool_zbgc_em(date=trade_date.replace("-", "")))
+
+
+def fetch_limit_down_pool(trade_date: str) -> int:
+    """Eastmoney limit-down pool count; errors propagate."""
+    import akshare as ak
+
+    return _parse_pool_count(ak.stock_zt_pool_dtgc_em(date=trade_date.replace("-", "")))
+
+
 @dataclass
 class MarketFacts:
     trade_date: str
