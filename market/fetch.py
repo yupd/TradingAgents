@@ -51,6 +51,14 @@ class Sentiment:
     as_of: str | None = None
 
 
+@dataclass
+class Industries:
+    gainers: list[tuple[str, float]]
+    losers: list[tuple[str, float]]
+    as_of: str
+    note: str | None = None
+
+
 @dataclass(frozen=True)
 class IndexSpec:
     name: str
@@ -342,6 +350,37 @@ def fetch_sentiment(trade_date: str) -> Sentiment:
         _fetch_sentiment_pool("limit-down", fetch_limit_down_pool, trade_date),
         trade_date,
     )
+
+
+def _parse_industries(frame, as_of: str) -> Industries:
+    """Top and bottom five THS industry boards by change pct; an empty frame stays empty."""
+    import pandas as pd
+
+    if frame is None or frame.empty or "板块" not in frame or "涨跌幅" not in frame:
+        return Industries(gainers=[], losers=[], as_of=as_of)
+    pct = pd.to_numeric(frame["涨跌幅"], errors="coerce")
+    valid = frame.assign(涨跌幅=pct).dropna(subset=["涨跌幅"])
+    ranked = sorted(
+        (
+            (str(name), float(value))
+            for name, value in zip(valid["板块"], valid["涨跌幅"], strict=True)
+        ),
+        key=lambda row: row[1],
+        reverse=True,
+    )
+    return Industries(
+        gainers=ranked[:5],
+        losers=sorted(ranked[-5:], key=lambda row: row[1]),
+        as_of=as_of,
+    )
+
+
+def fetch_industries(trade_date: str) -> Industries | None:
+    """THS industry board snapshot; network errors propagate to the caller."""
+    import akshare as ak
+
+    as_of = datetime.now().strftime("%Y-%m-%d %H:%M")
+    return _parse_industries(ak.stock_board_industry_summary_ths(), as_of)
 
 
 @dataclass
