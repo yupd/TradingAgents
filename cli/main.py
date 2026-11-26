@@ -8,7 +8,7 @@ from rich.markup import escape
 from cli.display import console
 from cli.models import AnalystType, AssetType
 from cli.prompts import filter_analysts_for_asset_type, parse_analysts
-from cli.run import run_analysis, run_brief, run_deep, run_market
+from cli.run import MarketDataUnavailable, run_analysis, run_brief, run_deep, run_market
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients.openai_client import SIGNED_IN_PROVIDERS
 
@@ -127,6 +127,9 @@ def market(
     """Write the daily A-share market trend report."""
     try:
         path = run_market(date)
+    except MarketDataUnavailable as exc:
+        console.print(f"[red]{escape(str(exc))}[/red]")
+        raise typer.Exit(code=1) from None
     except ValueError as exc:
         console.print(f"[red]{escape(str(exc))}[/red]")
         raise typer.Exit(code=2) from None

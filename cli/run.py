@@ -33,6 +33,10 @@ from tradingagents.graph.analyst_execution import (
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 
 
+class MarketDataUnavailable(RuntimeError):
+    """Every market source came back empty, so there is nothing to report."""
+
+
 def _run_directory(config: dict, ticker: str, trade_date: str) -> Path:
     """Where this run writes, with the ticker validated as a path component.
 
@@ -517,6 +521,19 @@ def run_market(date: str | None = None) -> Path:
         industries = None
         industries_gap = f"industries: {type(exc).__name__}: {exc}"
     news_result = fetch_news(day)
+    # A report built from nothing is worse than no report: say every source
+    # failed before the LLM or the output directory is touched.
+    if (
+        all(quote.close is None for quote in indices)
+        and turnover.sh is None
+        and turnover.sz is None
+        and sentiment.limit_up is None
+        and sentiment.limit_down is None
+        and sentiment.broken is None
+        and industries is None
+        and not news_result.items
+    ):
+        raise MarketDataUnavailable("没有可用的市场数据，未生成报告")
     benchmark = next((quote for quote in indices if quote.code == "sh000300"), None)
     trend = classify_trend(benchmark) if benchmark is not None else None
     flags = compute_flags(indices, sentiment)

@@ -10,6 +10,19 @@ import cli.main as m
 from market.fetch import Industries, IndexQuote, MarketNews, NewsResult, Sentiment, Turnover
 from market.summarize import Summary
 
+def _patch_empty_fetchers(monkeypatch, day="2026-11-26"):
+    """Every source returns nothing, as when the network is down."""
+    monkeypatch.setattr("market.rules.resolve_trade_date", lambda date: (day, None))
+    monkeypatch.setattr(
+        "market.fetch.fetch_indices",
+        lambda trade_date: [IndexQuote(name="上证", code="sh000001")],
+    )
+    monkeypatch.setattr("market.fetch.fetch_turnover", lambda trade_date: Turnover())
+    monkeypatch.setattr("market.fetch.fetch_sentiment", lambda trade_date: Sentiment())
+    monkeypatch.setattr("market.fetch.fetch_industries", lambda trade_date: None)
+    monkeypatch.setattr("market.fetch.fetch_news", lambda trade_date: NewsResult([]))
+
+
 HEADINGS = (
     "结论",
     "指数趋势",
@@ -124,3 +137,69 @@ def test_run_market_writes_the_seven_sections(monkeypatch, tmp_path):
     assert f"# A 股大盘复盘 {day}" in text
     for heading in HEADINGS:
         assert f"## {heading}" in text
+
+
+@pytest.mark.unit
+def test_market_command_exits_1_when_every_source_is_empty(monkeypatch, tmp_path):
+    _patch_empty_fetchers(monkeypatch)
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(m.app, ["market", "--date", "2026-11-26"])
+
+    assert result.exit_code == 1
+    assert "没有可用的市场数据" in result.output
+    assert not (tmp_path / "reports" / "market").exists()
+
+
+@pytest.mark.unit
+def test_run_market_raises_when_every_source_is_empty(monkeypatch):
+    _patch_empty_fetchers(monkeypatch)
+
+    from cli.run import MarketDataUnavailable, run_market
+
+    with pytest.raises(MarketDataUnavailable):
+        run_market("2026-11-26")
+
+
+@pytest.mark.unit
+def test_all_empty_skips_the_llm(monkeypatch):
+    _patch_empty_fetchers(monkeypatch)
+
+    def fail_create(config, tier):
+        raise AssertionError("LLM client created with no market data")
+
+    monkeypatch.setattr("tradingagents.llm_clients.create_tier_client", fail_create)
+
+    from cli.run import MarketDataUnavailable, run_market
+
+    with pytest.raises(MarketDataUnavailable):
+        run_market("2026-11-26")
+
+
+@pytest.mark.unit
+def test_partial_failure_still_writes_a_report(monkeypatch, tmp_path):
+    day = "2026-11-26"
+    indices = [
+        IndexQuote(
+            name="沪深300", code="sh000300", close=100.0, source="tencent", as_of=day
+        )
+    ]
+    monkeypatch.setattr("market.rules.resolve_trade_date", lambda date: (day, None))
+    monkeypatch.setattr("market.fetch.fetch_indices", lambda trade_date: indices)
+    monkeypatch.setattr("market.fetch.fetch_turnover", lambda trade_date: Turnover())
+    monkeypatch.setattr("market.fetch.fetch_sentiment", lambda trade_date: Sentiment())
+    monkeypatch.setattr("market.fetch.fetch_industries", lambda trade_date: None)
+    monkeypatch.setattr("market.fetch.fetch_news", lambda trade_date: NewsResult([]))
+    monkeypatch.setattr("market.summarize.safe_summarize", lambda facts, llm: Summary("摘要"))
+    monkeypatch.setattr(
+        "tradingagents.llm_clients.create_tier_client",
+        lambda config, tier: SimpleNamespace(get_llm=lambda: object()),
+    )
+    monkeypatch.chdir(tmp_path)
+
+    from cli.run import run_market
+
+    path = run_market(day)
+
+    assert path.exists()
+    assert "## 指数趋势" in path.read_text(encoding="utf-8")
