@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from tradingagents.dataflows.vendors.a_share import http
+from tradingagents.dataflows.vendors.a_share.types import DailyBar
+
 
 @dataclass
 class IndexQuote:
@@ -56,6 +59,33 @@ INDEXES: tuple[IndexSpec, ...] = (
     IndexSpec(name="沪深300", code="sh000300", exchange="SH"),
     IndexSpec(name="科创50", code="sh000688", exchange="SH"),
 )
+
+
+def _tencent_index_bars(spec: IndexSpec, start: str, end: str) -> list[DailyBar]:
+    """Daily qfq bars for one index; empty when Tencent has no rows."""
+    response = http.em_get(
+        "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get",
+        params={"param": f"{spec.code},day,{start},{end},640,qfq"},
+    )
+    data = response.json().get("data", {}).get(spec.code, {})
+    rows = data.get("qfqday") or data.get("day") or []
+    bars = []
+    for row in rows:
+        date, open_, close, high, low, volume = (str(value) for value in row[:6])
+        if start <= date <= end:
+            bars.append(
+                DailyBar(
+                    date=date,
+                    open=float(open_),
+                    high=float(high),
+                    low=float(low),
+                    close=float(close),
+                    volume=float(volume),
+                    source="tencent",
+                    as_of=date,
+                )
+            )
+    return bars
 
 
 @dataclass
