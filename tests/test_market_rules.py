@@ -12,6 +12,7 @@ from market.rules import (
     build_index_quote,
     classify_trend,
     compute_flags,
+    resolve_trade_date,
 )
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
@@ -125,6 +126,39 @@ def test_build_index_quote_with_no_bars():
     assert quote.code == "sh000001"
     assert quote.close is None
     assert quote.change_pct is None
+
+
+def test_resolve_trade_date_normalizes_to_previous_day(monkeypatch):
+    monkeypatch.setattr("market.rules.previous_trade_date", lambda value: "2026-11-25")
+
+    assert resolve_trade_date("2026-11-26") == ("2026-11-25", None)
+
+
+def test_resolve_trade_date_calendar_failure_keeps_request(monkeypatch):
+    def boom(value):
+        raise RuntimeError("calendar offline")
+
+    monkeypatch.setattr("market.rules.previous_trade_date", boom)
+
+    normalized, gap = resolve_trade_date("2026-11-26")
+
+    assert normalized == "2026-11-26"
+    assert "calendar" in gap
+
+
+def test_resolve_trade_date_defaults_to_today(monkeypatch):
+    seen = []
+    monkeypatch.setattr(
+        "market.rules.previous_trade_date", lambda value: seen.append(value) or value
+    )
+
+    assert resolve_trade_date(requested=None, today="2026-11-26") == ("2026-11-26", None)
+    assert seen == ["2026-11-26"]
+
+
+def test_resolve_trade_date_rejects_invalid_format():
+    with pytest.raises(ValueError):
+        resolve_trade_date("2026/11/26")
 
 
 def test_broken_rate_normal():

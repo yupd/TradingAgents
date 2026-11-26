@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date, datetime
 
 from market.fetch import IndexQuote, IndexSpec, Sentiment
+from tradingagents.dataflows.vendors.a_share.calendar import previous_trade_date
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
 
@@ -83,6 +85,18 @@ def compute_flags(indices: list[IndexQuote], sentiment: Sentiment | None) -> lis
             )
         )
     return flags
+
+
+def resolve_trade_date(
+    requested: str | None = None, today: str | None = None
+) -> tuple[str, str | None]:
+    """Normalize the requested date to the latest trading day, recording a calendar gap."""
+    target = requested or today or date.today().isoformat()
+    datetime.strptime(target, "%Y-%m-%d")
+    try:
+        return previous_trade_date(target), None
+    except Exception as exc:
+        return target, f"calendar: {type(exc).__name__}: {exc}"
 
 
 def broken_rate(limit_up: int | None, broken: int | None) -> float | None:
