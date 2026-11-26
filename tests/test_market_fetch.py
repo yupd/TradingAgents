@@ -1,16 +1,20 @@
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
+import pytest
+
 from market.fetch import (
     INDEXES,
     IndexSpec,
     _em_index_bars,
     _parse_sse_turnover,
+    _parse_szse_turnover,
     _sina_index_bars,
     _tencent_index_bars,
     fetch_index_bars,
     fetch_indices,
     fetch_sse_turnover,
+    fetch_szse_turnover,
 )
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
@@ -393,4 +397,69 @@ def test_fetch_sse_turnover_prefers_current_akshare_name(monkeypatch):
     monkeypatch.setattr(ak, "stock_deal_daily_sse", fake)
 
     assert fetch_sse_turnover("2026-11-26").sh == 6539.10
+    assert calls == ["20261126"]
+
+
+def _szse_turnover_frame(turnover=7.314446e11):
+    import pandas as pd
+
+    return pd.DataFrame({
+        "证券类别": ["股票", "主板A股", "创业板A股"],
+        "数量": [2879, 1500, 1379],
+        "成交金额": [turnover, 3.0e11, 4.0e11],
+        "总市值": [3.0e13, 2.0e13, 1.0e13],
+        "流通市值": [2.5e13, 1.5e13, 1.0e13],
+    })
+
+
+def test_parse_szse_turnover_converts_yuan_to_yi():
+    turnover = _parse_szse_turnover(_szse_turnover_frame(), "2026-11-26")
+
+    assert turnover.sz == pytest.approx(7314.446)
+    assert (turnover.note, turnover.as_of) == (
+        "深交所-股票（含B股与创业板）", "2026-11-26",
+    )
+
+
+def test_parse_szse_turnover_returns_none_without_usable_value():
+    import pandas as pd
+
+    missing = pd.DataFrame({"证券类别": ["主板A股"], "成交金额": [3.0e11]})
+    placeholder = pd.DataFrame({"证券类别": ["股票"], "成交金额": ["-"]})
+    nan_value = pd.DataFrame({"证券类别": ["股票"], "成交金额": [float("nan")]})
+
+    assert _parse_szse_turnover(missing, "2026-11-26") is None
+    assert _parse_szse_turnover(placeholder, "2026-11-26") is None
+    assert _parse_szse_turnover(nan_value, "2026-11-26") is None
+
+
+def test_fetch_szse_turnover_passes_yyyymmdd_and_parses(monkeypatch):
+    import sys
+
+    calls = []
+
+    def fake(date):
+        calls.append(date)
+        return _szse_turnover_frame()
+
+    monkeypatch.setitem(sys.modules, "akshare", SimpleNamespace(stock_summary_szse=fake))
+
+    turnover = fetch_szse_turnover("2026-11-26")
+
+    assert calls == ["20261126"]
+    assert (turnover.sz, turnover.as_of) == (pytest.approx(7314.446), "2026-11-26")
+
+
+def test_fetch_szse_turnover_falls_back_to_old_name(monkeypatch):
+    import sys
+
+    calls = []
+
+    def fake(date):
+        calls.append(date)
+        return _szse_turnover_frame()
+
+    monkeypatch.setitem(sys.modules, "akshare", SimpleNamespace(stock_szse_summary=fake))
+
+    assert fetch_szse_turnover("2026-11-26").sz == pytest.approx(7314.446)
     assert calls == ["20261126"]

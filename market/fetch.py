@@ -205,6 +205,32 @@ def fetch_sse_turnover(trade_date: str) -> Turnover | None:
     return _parse_sse_turnover(fetch(date=trade_date.replace("-", "")), trade_date)
 
 
+def _parse_szse_turnover(frame, trade_date: str) -> Turnover | None:
+    """SZSE daily stock turnover (亿元) from the ``stock_summary_szse`` frame."""
+    try:
+        cells = frame.loc[frame["证券类别"] == "股票", "成交金额"]
+    except (KeyError, TypeError):
+        return None
+    if cells.empty:
+        return None
+    try:
+        value = float(cells.iloc[0]) / 1e8  # akshare reports 元
+    except (TypeError, ValueError):
+        return None
+    if value != value:  # NaN placeholder from akshare
+        return None
+    return Turnover(sz=value, note="深交所-股票（含B股与创业板）", as_of=trade_date)
+
+
+def fetch_szse_turnover(trade_date: str) -> Turnover | None:
+    """SZSE stock turnover for one session; network errors propagate to the caller."""
+    import akshare as ak
+
+    # akshare renamed the function; support both spellings.
+    fetch = getattr(ak, "stock_summary_szse", None) or getattr(ak, "stock_szse_summary")
+    return _parse_szse_turnover(fetch(date=trade_date.replace("-", "")), trade_date)
+
+
 @dataclass
 class MarketFacts:
     trade_date: str
