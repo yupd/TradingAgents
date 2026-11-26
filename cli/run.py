@@ -490,6 +490,66 @@ def run_brief(trade_date: str | None = None, watchlist: str = "watchlist.yaml"):
     return render_brief(day, entries, Path("reports") / "brief")
 
 
+def run_market(date: str | None = None) -> Path:
+    """Collect market-wide facts, summarize them and write one Markdown report."""
+    from market.fetch import (
+        MarketFacts,
+        fetch_indices,
+        fetch_industries,
+        fetch_news,
+        fetch_sentiment,
+        fetch_turnover,
+    )
+    from market.render import render_market
+    from market.rules import classify_trend, collect_gaps, compute_flags, resolve_trade_date
+    from market.summarize import safe_summarize
+    from tradingagents.default_config import DEFAULT_CONFIG
+    from tradingagents.llm_clients import create_tier_client
+
+    day, calendar_gap = resolve_trade_date(date)
+    indices = fetch_indices(day)
+    turnover = fetch_turnover(day)
+    sentiment = fetch_sentiment(day)
+    industries_gap = None
+    try:
+        industries = fetch_industries(day)
+    except Exception as exc:
+        industries = None
+        industries_gap = f"industries: {type(exc).__name__}: {exc}"
+    news_result = fetch_news(day)
+    benchmark = next((quote for quote in indices if quote.code == "sh000300"), None)
+    trend = classify_trend(benchmark) if benchmark is not None else None
+    flags = compute_flags(indices, sentiment)
+    gaps = collect_gaps(
+        indices,
+        turnover,
+        sentiment,
+        industries,
+        news_result,
+        extra=[gap for gap in (calendar_gap, industries_gap) if gap],
+    )
+    facts = MarketFacts(
+        trade_date=day,
+        requested_date=date,
+        as_of=day,
+        indices=indices,
+        turnover=turnover,
+        sentiment=sentiment,
+        industries=industries,
+        news=news_result.items,
+        trend=trend,
+        flags=flags,
+        gaps=gaps,
+        sources=list(dict.fromkeys(quote.source for quote in indices if quote.source)),
+    )
+    llm = create_tier_client(dict(DEFAULT_CONFIG), "quick").get_llm()
+    summary = safe_summarize(facts, llm)
+    path = Path("reports") / "market" / f"{day}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(render_market(facts, summary), encoding="utf-8")
+    return path
+
+
 def run_deep(code: str, date: str | None = None, selected_analysts: list[str] | None = None,
              debate: int | None = None, resume: bool = False) -> int:
     """Run the full graph for one instrument and write its report tree."""
