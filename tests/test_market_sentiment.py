@@ -1,13 +1,16 @@
 from types import SimpleNamespace
 
 import pandas as pd
+import pytest
 
 from market.fetch import (
     _parse_limit_up,
     _parse_pool_count,
+    build_sentiment,
     fetch_broken_pool,
     fetch_limit_down_pool,
     fetch_limit_up,
+    fetch_sentiment,
 )
 
 
@@ -91,3 +94,77 @@ def test_fetch_pools_pass_yyyymmdd_and_parse(monkeypatch):
     assert fetch_broken_pool("2026-11-26") == 30
     assert fetch_limit_down_pool("2026-11-26") == 43
     assert calls == [("broken", "20261126"), ("limit_down", "20261126")]
+
+
+def test_build_sentiment_computes_broken_rate():
+    sentiment = build_sentiment(70, 4, 30, 5, "2026-11-26")
+
+    assert (sentiment.limit_up, sentiment.max_streak) == (70, 4)
+    assert (sentiment.broken, sentiment.limit_down) == (30, 5)
+    assert sentiment.broken_rate == pytest.approx(30.0)
+    assert sentiment.as_of == "2026-11-26"
+
+
+def _patch_pools(monkeypatch, limit_up=(70, 4), broken=30, limit_down=5):
+    monkeypatch.setattr("market.fetch.fetch_limit_up", lambda date: limit_up)
+    monkeypatch.setattr("market.fetch.fetch_broken_pool", lambda date: broken)
+    monkeypatch.setattr("market.fetch.fetch_limit_down_pool", lambda date: limit_down)
+
+
+def test_fetch_sentiment_populates_all_pools(monkeypatch):
+    _patch_pools(monkeypatch)
+
+    sentiment = fetch_sentiment("2026-11-26")
+
+    assert (sentiment.limit_up, sentiment.max_streak) == (70, 4)
+    assert (sentiment.broken, sentiment.limit_down) == (30, 5)
+    assert sentiment.broken_rate == pytest.approx(30.0)
+    assert sentiment.as_of == "2026-11-26"
+
+
+def test_fetch_sentiment_limit_down_failure_keeps_other_pools(monkeypatch):
+    _patch_pools(monkeypatch)
+
+    def boom(date):
+        raise RuntimeError("limit-down unavailable")
+
+    monkeypatch.setattr("market.fetch.fetch_limit_down_pool", boom)
+
+    sentiment = fetch_sentiment("2026-11-26")
+
+    assert (sentiment.limit_up, sentiment.max_streak) == (70, 4)
+    assert sentiment.broken == 30
+    assert sentiment.limit_down is None
+    assert sentiment.broken_rate == pytest.approx(30.0)
+
+
+def test_fetch_sentiment_limit_up_failure_nulls_streak_and_rate(monkeypatch):
+    _patch_pools(monkeypatch)
+
+    def boom(date):
+        raise RuntimeError("limit-up unavailable")
+
+    monkeypatch.setattr("market.fetch.fetch_limit_up", boom)
+
+    sentiment = fetch_sentiment("2026-11-26")
+
+    assert sentiment.limit_up is None
+    assert sentiment.max_streak is None
+    assert (sentiment.broken, sentiment.limit_down) == (30, 5)
+    assert sentiment.broken_rate is None
+
+
+def test_fetch_sentiment_all_pools_fail_returns_empty_record(monkeypatch):
+    def boom(date):
+        raise RuntimeError("unavailable")
+
+    monkeypatch.setattr("market.fetch.fetch_limit_up", boom)
+    monkeypatch.setattr("market.fetch.fetch_broken_pool", boom)
+    monkeypatch.setattr("market.fetch.fetch_limit_down_pool", boom)
+
+    sentiment = fetch_sentiment("2026-11-26")
+
+    assert (sentiment.limit_up, sentiment.max_streak) == (None, None)
+    assert (sentiment.broken, sentiment.limit_down) == (None, None)
+    assert sentiment.broken_rate is None
+    assert sentiment.as_of == "2026-11-26"

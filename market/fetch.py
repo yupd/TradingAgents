@@ -302,6 +302,48 @@ def fetch_limit_down_pool(trade_date: str) -> int:
     return _parse_pool_count(ak.stock_zt_pool_dtgc_em(date=trade_date.replace("-", "")))
 
 
+def build_sentiment(
+    limit_up: int | None,
+    max_streak: int | None,
+    broken: int | None,
+    limit_down: int | None,
+    trade_date: str,
+) -> Sentiment:
+    """Assemble the sentiment record; ``broken_rate`` needs both limit-up and broken counts."""
+    from market.rules import broken_rate  # function-local: market.rules imports market.fetch
+
+    return Sentiment(
+        limit_up=limit_up,
+        max_streak=max_streak,
+        broken=broken,
+        limit_down=limit_down,
+        broken_rate=broken_rate(limit_up, broken),
+        as_of=trade_date,
+    )
+
+
+def _fetch_sentiment_pool(name: str, fetch, trade_date: str):
+    """One sentiment pool; a source error yields ``None`` instead of aborting."""
+    try:
+        return fetch(trade_date)
+    except Exception as exc:
+        logger.debug("sentiment %s pool fetch failed: %s", name, exc)
+        return None
+
+
+def fetch_sentiment(trade_date: str) -> Sentiment:
+    """Limit-up, broken and limit-down pools fetched independently; a failed pool stays empty."""
+    limit_up_result = _fetch_sentiment_pool("limit-up", fetch_limit_up, trade_date)
+    limit_up, max_streak = limit_up_result if limit_up_result is not None else (None, None)
+    return build_sentiment(
+        limit_up,
+        max_streak,
+        _fetch_sentiment_pool("broken", fetch_broken_pool, trade_date),
+        _fetch_sentiment_pool("limit-down", fetch_limit_down_pool, trade_date),
+        trade_date,
+    )
+
+
 @dataclass
 class MarketFacts:
     trade_date: str
