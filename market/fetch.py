@@ -179,6 +179,32 @@ def fetch_indices(trade_date: str) -> list[IndexQuote]:
     return quotes
 
 
+def _parse_sse_turnover(frame, trade_date: str) -> Turnover | None:
+    """SSE daily stock turnover (亿元) from the ``stock_deal_daily_sse`` frame."""
+    try:
+        cells = frame.loc[frame["单日情况"] == "成交金额", "股票"]
+    except (KeyError, TypeError):
+        return None
+    if cells.empty:
+        return None
+    try:
+        value = float(cells.iloc[0])
+    except (TypeError, ValueError):
+        return None
+    if value != value:  # NaN placeholder from akshare
+        return None
+    return Turnover(sh=value, note="上交所-股票（含B股）", as_of=trade_date)
+
+
+def fetch_sse_turnover(trade_date: str) -> Turnover | None:
+    """SSE stock turnover for one session; network errors propagate to the caller."""
+    import akshare as ak
+
+    # akshare renamed the function; support both spellings.
+    fetch = getattr(ak, "stock_deal_daily_sse", None) or getattr(ak, "stock_sse_deal_daily")
+    return _parse_sse_turnover(fetch(date=trade_date.replace("-", "")), trade_date)
+
+
 @dataclass
 class MarketFacts:
     trade_date: str

@@ -5,10 +5,12 @@ from market.fetch import (
     INDEXES,
     IndexSpec,
     _em_index_bars,
+    _parse_sse_turnover,
     _sina_index_bars,
     _tencent_index_bars,
     fetch_index_bars,
     fetch_indices,
+    fetch_sse_turnover,
 )
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
@@ -331,3 +333,64 @@ def test_fetch_indices_survives_none_and_exception(monkeypatch):
         ) == (None,) * 10
     healthy = [q for q in quotes if q.code not in {none_spec.code, error_spec.code}]
     assert all(quote.close is not None and quote.return_60d is not None for quote in healthy)
+
+
+def _sse_turnover_frame():
+    import pandas as pd
+
+    return pd.DataFrame({
+        "单日情况": ["挂牌数", "市价总值", "流通市值", "成交金额", "成交量", "平均市盈率"],
+        "股票": [2360, 607121.03, 550416.63, 6539.10, 473.97, 15.32],
+    })
+
+
+def test_parse_sse_turnover_reads_stock_turnover():
+    turnover = _parse_sse_turnover(_sse_turnover_frame(), "2026-11-26")
+
+    assert (turnover.sh, turnover.note, turnover.as_of) == (
+        6539.10, "上交所-股票（含B股）", "2026-11-26",
+    )
+
+
+def test_parse_sse_turnover_returns_none_without_usable_value():
+    import pandas as pd
+
+    missing = pd.DataFrame({"单日情况": ["挂牌数", "成交量"], "股票": [2360, 473.97]})
+    placeholder = pd.DataFrame({"单日情况": ["成交金额"], "股票": ["-"]})
+
+    assert _parse_sse_turnover(missing, "2026-11-26") is None
+    assert _parse_sse_turnover(placeholder, "2026-11-26") is None
+
+
+def test_fetch_sse_turnover_passes_yyyymmdd_and_parses(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    calls = []
+
+    def fake(date):
+        calls.append(date)
+        return _sse_turnover_frame()
+
+    # Fake module exposing only the old name exercises the getattr fallback.
+    monkeypatch.setitem(sys.modules, "akshare", SimpleNamespace(stock_sse_deal_daily=fake))
+
+    turnover = fetch_sse_turnover("2026-11-26")
+
+    assert calls == ["20261126"]
+    assert (turnover.sh, turnover.as_of) == (6539.10, "2026-11-26")
+
+
+def test_fetch_sse_turnover_prefers_current_akshare_name(monkeypatch):
+    import akshare as ak
+
+    calls = []
+
+    def fake(date):
+        calls.append(date)
+        return _sse_turnover_frame()
+
+    monkeypatch.setattr(ak, "stock_deal_daily_sse", fake)
+
+    assert fetch_sse_turnover("2026-11-26").sh == 6539.10
+    assert calls == ["20261126"]
