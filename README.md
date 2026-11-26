@@ -63,12 +63,18 @@ DEEPSEEK_API_KEY=...
 
 # 深挖港股（只用上游 4 个分析师，走 yfinance）
 .venv/bin/python -m cli.main deep 0700.HK
+
+# 每日大盘复盘（--date 省略时取最近交易日）
+.venv/bin/python -m cli.main market --date 2026-11-26
 ```
 
 报告路径：
 
 - 简报：`reports/brief/YYYY-MM-DD.md`
 - 深挖：`reports/deep/<CODE>/<YYYY-MM-DD>/complete_report.md`
+- 大盘复盘：`reports/market/YYYY-MM-DD.md`
+
+大盘复盘先确定性收集指数趋势、成交量、情绪与行业强弱，再调用一次模型写叙述，报告固定七节。数据口径：不含北向资金；涨跌家数与行业强弱只有当日数据，历史报告标注不可用；成交额一节仅当日沪/深/合计，20 日均量倍数见「指数趋势」下的「指数成交量口径」；东方财富限流时对应区块降级为「数据缺口」，不会导致整份报告失败。
 
 ## Docker 运行
 
@@ -90,7 +96,7 @@ docker compose logs -f web
 docker compose down         # 停止；./data 保留
 ```
 
-`./data` 对应容器内 `~/.tradingagents`：`logs/` 是分析报告，`cache/` 是数据缓存，另有断点与未完成任务状态。CLI 的 `deep`/`brief` 报告写到 `./reports`。迁入本机历史：
+`./data` 对应容器内 `~/.tradingagents`：`logs/` 是分析报告，`cache/` 是数据缓存，另有断点与未完成任务状态。CLI 的 `deep`/`brief`/`market` 报告写到 `./reports`。迁入本机历史：
 
 ```bash
 mkdir -p data
