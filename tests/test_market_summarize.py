@@ -7,7 +7,7 @@ from market.fetch import (
     Turnover,
 )
 from market.rules import Trend
-from market.summarize import facts_block, summarize_market
+from market.summarize import Summary, facts_block, summarize_market, validate_numbers
 
 
 def _full_facts() -> MarketFacts:
@@ -117,6 +117,40 @@ def test_summarize_accepts_plain_string_result():
             return " 纯文本 "
 
     assert summarize_market(_full_facts(), _StringLLM()) == "纯文本"
+
+
+_FACTS_TEXT = "上证收于 3476.88\n涨停 70 家\n成交额 6,539.10 亿元"
+
+
+def test_validate_numbers_drops_sentence_with_unknown_number():
+    text = "上证收于 3476.88。预计明日 9999 点。涨停 70 家。成交额 6539.10%。"
+    result = validate_numbers(text, _FACTS_TEXT)
+
+    assert result.dropped == 1
+    assert "9999" not in result.text
+    assert "3476.88" in result.text
+    assert "涨停 70 家" in result.text
+    assert "6539.10%" in result.text
+
+
+def test_validate_numbers_leaves_text_without_numbers_untouched():
+    text = "市场情绪回暖，暂无数据。"
+    assert validate_numbers(text, _FACTS_TEXT) == Summary(text=text, dropped=0)
+
+
+def test_validate_numbers_all_invalid_yields_empty_text():
+    text = "明日 9999 点。支撑 8888 点！"
+    result = validate_numbers(text, _FACTS_TEXT)
+
+    assert result.text == ""
+    assert result.dropped == 2
+
+
+def test_validate_numbers_drops_chunk_with_mixed_numbers_whole():
+    result = validate_numbers("上证 3476.88 与 9999 点。", _FACTS_TEXT)
+
+    assert result.text == ""
+    assert result.dropped == 1
 
 
 def test_missing_groups_render_unavailable_without_raising():

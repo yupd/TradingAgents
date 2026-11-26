@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
+
 from market.fetch import Industries, IndexQuote, MarketFacts, MarketNews, Sentiment, Turnover
 from market.rules import Trend
 
@@ -138,3 +141,31 @@ def summarize_market(facts: MarketFacts, llm) -> str:
     result = llm.invoke(_PROMPT.format(block=facts_block(facts)))
     text = result if isinstance(result, str) else result.content
     return text.strip()
+
+
+_NUMBER = re.compile(r"[+-]?\d[\d,]*(?:\.\d+)?")
+_SENTENCE_END = re.compile(r"(?<=[。！？；\n])")
+
+
+@dataclass
+class Summary:
+    text: str
+    dropped: int = 0
+
+
+def _numbers(text: str) -> set[str]:
+    return {t.replace(",", "").removeprefix("+") for t in _NUMBER.findall(text)}
+
+
+def validate_numbers(text: str, facts_text: str) -> Summary:
+    """Drop any sentence that cites a number absent from the facts block."""
+    known = _numbers(facts_text)
+    kept: list[str] = []
+    dropped = 0
+    for chunk in _SENTENCE_END.split(text):
+        numbers = _numbers(chunk)
+        if numbers and not numbers <= known:
+            dropped += 1
+            continue
+        kept.append(chunk)
+    return Summary("".join(kept).strip(), dropped)
