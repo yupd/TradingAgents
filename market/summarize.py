@@ -6,7 +6,8 @@ from market.fetch import Industries, IndexQuote, MarketFacts, MarketNews, Sentim
 from market.rules import Trend
 
 _NA = "不可用"
-_PCT = "{:+.2f}"
+_PCT = "{:+.2f}%"
+_YI = "{:.2f} 亿元"
 
 
 def _fmt(value: float | None, pattern: str = "{:.2f}") -> str:
@@ -42,33 +43,37 @@ def _indices(indices: list[IndexQuote]) -> str:
     if not indices:
         return _NA
     return "\n".join(
-        f"- {q.name} {q.code}：收盘 {_fmt(q.close)}，涨跌 {_fmt(q.change_pct, _PCT)}%，"
-        f"5日 {_fmt(q.return_5d, _PCT)}%，20日 {_fmt(q.return_20d, _PCT)}%，"
-        f"60日 {_fmt(q.return_60d, _PCT)}%，MA20 {_fmt(q.ma20)}，"
+        f"- {q.name} {q.code}：收盘 {_fmt(q.close)}，涨跌 {_fmt(q.change_pct, _PCT)}，"
+        f"5日 {_fmt(q.return_5d, _PCT)}，20日 {_fmt(q.return_20d, _PCT)}，"
+        f"60日 {_fmt(q.return_60d, _PCT)}，MA20 {_fmt(q.ma20)}，"
         f"MA60 {_fmt(q.ma60)}，量能 {_fmt(q.volume_ratio)}"
         for q in indices
     )
 
 
 def _turnover(turnover: Turnover | None) -> str:
+    if turnover is None:
+        return _NA
     lines = [
-        f"沪市：{_fmt(turnover.sh if turnover else None)} 亿元",
-        f"深市：{_fmt(turnover.sz if turnover else None)} 亿元",
-        f"合计：{_fmt(turnover.total if turnover else None)} 亿元",
+        f"沪市：{_fmt(turnover.sh, _YI)}",
+        f"深市：{_fmt(turnover.sz, _YI)}",
+        f"合计：{_fmt(turnover.total, _YI)}",
     ]
-    if turnover is not None and turnover.note:
+    if turnover.note:
         lines.append(f"说明：{turnover.note}")
     return "\n".join(lines)
 
 
 def _sentiment(sentiment: Sentiment | None) -> str:
+    if sentiment is None:
+        return _NA
     return "\n".join(
         [
-            f"涨停：{_count(sentiment.limit_up if sentiment else None)}",
-            f"跌停：{_count(sentiment.limit_down if sentiment else None)}",
-            f"炸板：{_count(sentiment.broken if sentiment else None)}",
-            f"炸板率：{_rate(sentiment.broken_rate if sentiment else None)}",
-            f"最高连板：{_count(sentiment.max_streak if sentiment else None)}",
+            f"涨停：{_count(sentiment.limit_up)}",
+            f"跌停：{_count(sentiment.limit_down)}",
+            f"炸板：{_count(sentiment.broken)}",
+            f"炸板率：{_rate(sentiment.broken_rate)}",
+            f"最高连板：{_count(sentiment.max_streak)}",
         ]
     )
 

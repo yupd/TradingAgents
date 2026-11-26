@@ -70,10 +70,23 @@ def test_news_line_is_labelled_as_unverified():
     assert "- [东财 2026-11-25 09:00] 央行降准（媒体口径，未核实）" in block
 
 
+def test_partial_data_has_no_dangling_units():
+    facts = MarketFacts(
+        trade_date="2026-11-25",
+        indices=[IndexQuote(name="上证", code="sh000001", close=3456.78)],
+        turnover=None,
+    )
+    block = facts_block(facts)
+    assert "不可用%" not in block
+    assert "涨跌 不可用" in block
+    assert "不可用 亿元" not in block
+    assert "## 成交额\n不可用" in block
+
+
 def test_missing_groups_render_unavailable_without_raising():
     block = facts_block(MarketFacts(trade_date="2026-11-25"))
     assert "趋势：无法判定" in block
-    assert block.count("不可用") >= 6
+    assert block.count("不可用") == 5
     for heading in (
         "## 档位",
         "## 指数",
