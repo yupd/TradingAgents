@@ -154,3 +154,25 @@ def test_every_selected_analyst_is_in_progress_until_its_report_lands():
     assert buffer.agent_status["Market Analyst"] == "in_progress"
     assert buffer.agent_status["Fundamentals Analyst"] == "in_progress"
     assert buffer.agent_status["News Analyst"] == "completed"
+
+
+@pytest.mark.unit
+def test_the_state_log_keeps_every_analyst_report(tmp_path):
+    state = _state("600519.SS")
+    state.update({"policy_report": "政策", "hot_money_report": "游资", "lockup_report": "解禁"})
+    _bare_graph(tmp_path)._log_state("2026-09-01", state)
+
+    logged = json.loads(next(tmp_path.rglob("full_states_log*.json")).read_text(encoding="utf-8"))
+    assert logged["policy_report"] == "政策"
+    assert logged["hot_money_report"] == "游资"
+    assert logged["lockup_report"] == "解禁"
+
+
+@pytest.mark.unit
+def test_the_state_log_tolerates_states_without_the_ashare_reports(tmp_path):
+    _bare_graph(tmp_path)._log_state("2026-09-01", _state("NVDA"))
+
+    logged = json.loads(next(tmp_path.rglob("full_states_log*.json")).read_text(encoding="utf-8"))
+    assert logged["policy_report"] == ""
+    assert logged["hot_money_report"] == ""
+    assert logged["lockup_report"] == ""
