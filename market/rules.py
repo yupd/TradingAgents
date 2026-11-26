@@ -6,6 +6,16 @@ from market.fetch import IndexQuote, IndexSpec
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
 
+def broken_rate(limit_up: int | None, broken: int | None) -> float | None:
+    """Broken-board rate in percent points; ``None`` when inputs are missing or both zero."""
+    if limit_up is None or broken is None:
+        return None
+    total = limit_up + broken
+    if total == 0:
+        return None
+    return broken / total * 100
+
+
 def _return(closes: list[float], days: int) -> float | None:
     """Percent change over ``days`` sessions; ``None`` when history is short."""
     if len(closes) <= days:

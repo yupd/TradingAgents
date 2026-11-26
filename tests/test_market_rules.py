@@ -5,7 +5,7 @@ from dataclasses import replace
 import pytest
 
 from market.fetch import IndexSpec
-from market.rules import build_index_quote
+from market.rules import broken_rate, build_index_quote
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
 SPEC = IndexSpec(name="上证", code="sh000001", exchange="SH")
@@ -118,3 +118,20 @@ def test_build_index_quote_with_no_bars():
     assert quote.code == "sh000001"
     assert quote.close is None
     assert quote.change_pct is None
+
+
+def test_broken_rate_normal():
+    assert broken_rate(70, 30) == pytest.approx(30.0)
+
+
+def test_broken_rate_no_limit_up():
+    assert broken_rate(0, 0) is None
+
+
+def test_broken_rate_missing_input():
+    assert broken_rate(None, 30) is None
+    assert broken_rate(70, None) is None
+
+
+def test_broken_rate_zero_broken():
+    assert broken_rate(3, 0) == pytest.approx(0.0)
