@@ -443,3 +443,4 @@ class MarketFacts:
     trend: object | None = None
     gaps: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
+    flags: list = field(default_factory=list)
