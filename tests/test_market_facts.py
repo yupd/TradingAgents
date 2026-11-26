@@ -1,4 +1,4 @@
-from market.fetch import IndexQuote, MarketFacts, Sentiment, Turnover
+from market.fetch import INDEXES, IndexQuote, IndexSpec, MarketFacts, Sentiment, Turnover
 
 
 def test_empty_market_facts_has_no_optional_groups():
@@ -27,6 +27,18 @@ def test_index_quote_requires_identity_only():
     assert quote.volume_ratio is None
     assert quote.source is None
     assert quote.as_of is None
+
+
+def test_indexes_are_the_five_fixed_specs_in_order():
+    assert len(INDEXES) == 5
+    assert all(isinstance(spec, IndexSpec) for spec in INDEXES)
+    assert [(spec.name, spec.code, spec.exchange) for spec in INDEXES] == [
+        ("上证", "sh000001", "SH"),
+        ("深成", "sz399001", "SZ"),
+        ("创业板", "sz399006", "SZ"),
+        ("沪深300", "sh000300", "SH"),
+        ("科创50", "sh000688", "SH"),
+    ]
 
 
 def test_turnover_and_sentiment_are_all_optional():

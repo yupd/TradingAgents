@@ -42,6 +42,22 @@ class Sentiment:
     as_of: str | None = None
 
 
+@dataclass(frozen=True)
+class IndexSpec:
+    name: str
+    code: str
+    exchange: str
+
+
+INDEXES: tuple[IndexSpec, ...] = (
+    IndexSpec(name="上证", code="sh000001", exchange="SH"),
+    IndexSpec(name="深成", code="sz399001", exchange="SZ"),
+    IndexSpec(name="创业板", code="sz399006", exchange="SZ"),
+    IndexSpec(name="沪深300", code="sh000300", exchange="SH"),
+    IndexSpec(name="科创50", code="sh000688", exchange="SH"),
+)
+
+
 @dataclass
 class MarketFacts:
     trade_date: str
