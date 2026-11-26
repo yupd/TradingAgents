@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from tradingagents.dataflows.vendors.a_share import akshare_patch  # noqa: F401  (installs the Eastmoney wrapper)
 from tradingagents.dataflows.vendors.a_share import http
+from tradingagents.dataflows.vendors.a_share.news import get_global_news
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
 logger = logging.getLogger(__name__)
@@ -57,6 +59,15 @@ class Industries:
     losers: list[tuple[str, float]]
     as_of: str
     note: str | None = None
+
+
+@dataclass
+class MarketNews:
+    title: str
+    published_at: str
+    source: str
+    url: str | None = None
+    note: str = "媒体口径，未核实"
 
 
 @dataclass(frozen=True)
@@ -383,6 +394,29 @@ def fetch_industries(trade_date: str) -> Industries:
 
     as_of = datetime.now().strftime("%Y-%m-%d %H:%M")
     return _parse_industries(ak.stock_board_industry_summary_ths(), as_of)
+
+
+_NEWS_LINE = re.compile(
+    r"^- \[(?P<source>[^\]]+)\] (?P<published_at>\d{4}-\d{2}-\d{2} \d{2}:\d{2}) (?P<title>.+)$"
+)
+
+
+def _parse_global_news(text: str) -> list[MarketNews]:
+    """Parse ``get_global_news`` markdown; sentinels, headings and malformed lines yield nothing."""
+    stripped = text.strip()
+    if not stripped or stripped.startswith(("DATA_UNAVAILABLE:", "NO_DATA_AVAILABLE:")):
+        return []
+    return [
+        MarketNews(**match.groupdict())
+        for line in stripped.splitlines()
+        if (match := _NEWS_LINE.match(line))
+    ]
+
+
+def fetch_news(trade_date: str, look_back_days: int = 7, limit: int = 10) -> list[MarketNews]:
+    """Market-wide flashes; fetch errors propagate so the caller can record the gap."""
+    text = get_global_news(trade_date, look_back_days=look_back_days, limit=limit)
+    return _parse_global_news(text)
 
 
 @dataclass
