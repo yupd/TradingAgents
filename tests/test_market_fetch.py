@@ -1,11 +1,14 @@
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 from market.fetch import (
+    INDEXES,
     IndexSpec,
     _em_index_bars,
     _sina_index_bars,
     _tencent_index_bars,
     fetch_index_bars,
+    fetch_indices,
 )
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
@@ -253,3 +256,63 @@ def test_fetch_index_bars_returns_none_when_all_sources_fail(monkeypatch):
 
     assert fetch_index_bars(spec, "2026-11-25", "2026-11-26") is None
     assert calls == ["tencent", "sina", "eastmoney"]
+
+
+def _recent_days(end: str, count: int) -> list[str]:
+    end_day = datetime.strptime(end, "%Y-%m-%d")
+    return [(end_day - timedelta(days=offset)).strftime("%Y-%m-%d")
+            for offset in range(count - 1, -1, -1)]
+
+
+def _no_network(*args, **kwargs):
+    raise AssertionError("network used")
+
+
+def test_fetch_indices_returns_five_quotes_in_order(monkeypatch):
+    trade_date = "2026-11-26"
+    days = _recent_days(trade_date, 65)
+    calls = []
+
+    def fake_fetch(spec, start, end):
+        calls.append((spec, start, end))
+        return _make_bars("fake", days)
+
+    monkeypatch.setattr("market.fetch.fetch_index_bars", fake_fetch)
+    monkeypatch.setattr("market.fetch.http.em_get", _no_network)
+
+    quotes = fetch_indices(trade_date)
+
+    assert [quote.name for quote in quotes] == [spec.name for spec in INDEXES]
+    assert [quote.code for quote in quotes] == [spec.code for spec in INDEXES]
+    assert all(quote.close == 1.0 for quote in quotes)
+    assert all(quote.return_60d is not None and quote.ma60 is not None for quote in quotes)
+    assert [spec for spec, _, _ in calls] == list(INDEXES)
+    assert all(end == trade_date for _, _, end in calls)
+    assert all(start < trade_date for _, start, _ in calls)
+
+
+def test_fetch_indices_survives_none_and_exception(monkeypatch):
+    trade_date = "2026-11-26"
+    days = _recent_days(trade_date, 65)
+    none_spec, error_spec = INDEXES[1], INDEXES[3]
+
+    def fake_fetch(spec, start, end):
+        if spec is none_spec:
+            return None
+        if spec is error_spec:
+            raise RuntimeError("source down")
+        return _make_bars("fake", days)
+
+    monkeypatch.setattr("market.fetch.fetch_index_bars", fake_fetch)
+    monkeypatch.setattr("market.fetch.http.em_get", _no_network)
+
+    quotes = fetch_indices(trade_date)
+
+    assert len(quotes) == 5
+    assert [quote.code for quote in quotes] == [spec.code for spec in INDEXES]
+    quotes_by_code = {quote.code: quote for quote in quotes}
+    for spec in (none_spec, error_spec):
+        quote = quotes_by_code[spec.code]
+        assert (quote.name, quote.close, quote.return_60d) == (spec.name, None, None)
+    healthy = [q for q in quotes if q.code not in {none_spec.code, error_spec.code}]
+    assert all(quote.close is not None and quote.return_60d is not None for quote in healthy)

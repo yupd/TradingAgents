@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta
 
 from tradingagents.dataflows.vendors.a_share import http
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
@@ -160,6 +161,22 @@ def fetch_index_bars(spec: IndexSpec, start: str, end: str) -> list[DailyBar] | 
         if bars:
             return bars
     return None
+
+
+def fetch_indices(trade_date: str) -> list[IndexQuote]:
+    """All five index quotes in ``INDEXES`` order; a failed index keeps ``None`` metrics."""
+    from market.rules import build_index_quote
+
+    start_day = datetime.strptime(trade_date, "%Y-%m-%d") - timedelta(days=400)
+    start = start_day.strftime("%Y-%m-%d")
+    quotes = []
+    for spec in INDEXES:
+        try:
+            quote = build_index_quote(spec, fetch_index_bars(spec, start, trade_date) or [])
+        except Exception:
+            quote = build_index_quote(spec, [])
+        quotes.append(quote)
+    return quotes
 
 
 @dataclass
