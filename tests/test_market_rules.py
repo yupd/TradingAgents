@@ -4,8 +4,8 @@ from dataclasses import replace
 
 import pytest
 
-from market.fetch import IndexSpec
-from market.rules import broken_rate, build_index_quote
+from market.fetch import IndexQuote, IndexSpec
+from market.rules import Trend, broken_rate, build_index_quote, classify_trend
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
 SPEC = IndexSpec(name="上证", code="sh000001", exchange="SH")
@@ -135,3 +135,41 @@ def test_broken_rate_missing_input():
 
 def test_broken_rate_zero_broken():
     assert broken_rate(3, 0) == pytest.approx(0.0)
+
+
+def _hs300(close=110.0, ma20=105.0, ma60=100.0, return_20d=5.0) -> IndexQuote:
+    return IndexQuote(
+        name="沪深300",
+        code="sh000300",
+        close=close,
+        ma20=ma20,
+        ma60=ma60,
+        return_20d=return_20d,
+    )
+
+
+def test_classify_trend_up():
+    assert classify_trend(_hs300()) == Trend("上行", True, True, True)
+
+
+def test_classify_trend_down():
+    assert classify_trend(
+        _hs300(close=100.0, ma20=105.0, ma60=110.0, return_20d=-5.0)
+    ) == Trend("下行", False, False, False)
+
+
+def test_classify_trend_sideways():
+    # Only the 20-day return flips.
+    assert classify_trend(_hs300(return_20d=-1.0)) == Trend("震荡", True, True, False)
+
+
+def test_classify_trend_tie_is_sideways():
+    # close == ma20 is not "above", so neither 上行 nor 下行.
+    assert classify_trend(_hs300(close=105.0)) == Trend("震荡", False, True, True)
+
+
+@pytest.mark.parametrize("missing", ["close", "ma20", "ma60", "return_20d"])
+def test_classify_trend_undetermined(missing):
+    quote = replace(_hs300(), **{missing: None})
+
+    assert classify_trend(quote) == Trend("无法判定", None, None, None)

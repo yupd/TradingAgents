@@ -2,8 +2,40 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from market.fetch import IndexQuote, IndexSpec
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
+
+
+@dataclass(frozen=True)
+class Trend:
+    level: str
+    close_above_ma20: bool | None
+    ma20_above_ma60: bool | None
+    return_20d_positive: bool | None
+
+
+def classify_trend(quote: IndexQuote) -> Trend:
+    """Three-condition decision table; 上行 needs all three, 下行 none, otherwise 震荡."""
+    close, ma20, ma60, return_20d = (
+        quote.close,
+        quote.ma20,
+        quote.ma60,
+        quote.return_20d,
+    )
+    if None in (close, ma20, ma60, return_20d):
+        return Trend("无法判定", None, None, None)
+    close_above_ma20 = close > ma20
+    ma20_above_ma60 = ma20 > ma60
+    return_20d_positive = return_20d > 0
+    if close_above_ma20 and ma20_above_ma60 and return_20d_positive:
+        level = "上行"
+    elif not (close_above_ma20 or ma20_above_ma60 or return_20d_positive):
+        level = "下行"
+    else:
+        level = "震荡"
+    return Trend(level, close_above_ma20, ma20_above_ma60, return_20d_positive)
 
 
 def broken_rate(limit_up: int | None, broken: int | None) -> float | None:
