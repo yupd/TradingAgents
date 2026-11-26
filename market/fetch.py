@@ -7,6 +7,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
+from tradingagents.dataflows.vendors.a_share import akshare_patch  # noqa: F401  (installs the Eastmoney wrapper)
 from tradingagents.dataflows.vendors.a_share import http
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
@@ -264,6 +265,22 @@ def fetch_turnover(trade_date: str) -> Turnover:
         _fetch_turnover_side("SZSE", fetch_szse_turnover, trade_date),
         trade_date,
     )
+
+
+def _parse_limit_up(frame) -> tuple[int | None, int | None]:
+    """Limit-up count and highest streak from the ``stock_zt_pool_em`` frame."""
+    if frame.empty:
+        return 0, None
+    if "连板数" not in frame:
+        return len(frame), None
+    return len(frame), int(frame["连板数"].max())
+
+
+def fetch_limit_up(trade_date: str) -> tuple[int | None, int | None]:
+    """Eastmoney limit-up pool count and highest streak; errors propagate."""
+    import akshare as ak
+
+    return _parse_limit_up(ak.stock_zt_pool_em(date=trade_date.replace("-", "")))
 
 
 @dataclass
