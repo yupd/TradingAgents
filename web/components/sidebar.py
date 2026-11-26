@@ -233,7 +233,7 @@ def _render_analysis_controls(raw_ticker: str, trade_date_value: date) -> None:
         st.rerun()
 
     if tracker is not None and tracker.stop_requested:
-        st.caption("正在停止并清空，收尾完成后可重新开始。")
+        st.caption("正在停止：当前步骤结束后收尾并清空断点。")
 
 
 def _render_llm_config() -> None:

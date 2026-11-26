@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 
 from web import runner
@@ -99,3 +100,50 @@ def test_a_stage_already_marked_active_still_completes(monkeypatch):
     _patched(monkeypatch, graph)
     runner._run("600519", "2026-11-26", {}, tracker)
     assert tracker.stage_status("market") == "done"
+
+
+def test_incomplete_task_gets_a_snapshot_not_the_live_list(monkeypatch):
+    tracker = ProgressTracker()
+    tracker.mark_stage_active("market")
+    captured = []
+    graph = FakeGraph([{"market_report": "m"}], [])
+    monkeypatch.setattr(runner, "_new_graph", lambda config, stats: graph)
+    monkeypatch.setattr(runner, "clear_incomplete_task", lambda *a, **k: None)
+    monkeypatch.setattr(
+        runner,
+        "record_incomplete_task",
+        lambda *a, **k: captured.append(k.get("completed_stages")),
+    )
+    runner._run("600519", "2026-11-26", {}, tracker)
+    assert captured
+    assert all(stages is not tracker.completed_stages for stages in captured)
+
+
+def test_end_checkpoint_runs_when_state_build_fails(monkeypatch):
+    calls = []
+
+    class CreateBoom(FakeGraph):
+        def create_run_state(self, *a, **k):
+            raise RuntimeError("state")
+
+    graph = CreateBoom([], calls)
+    _patched(monkeypatch, graph)
+    with pytest.raises(RuntimeError):
+        runner._run("600519", "2026-11-26", {}, ProgressTracker())
+    assert "end" in calls
+
+
+def test_save_failure_keeps_the_checkpoint(monkeypatch):
+    tracker = ProgressTracker()
+    calls = []
+
+    class SaveBoom(FakeGraph):
+        def save_reports(self, *a, **k):
+            raise RuntimeError("disk")
+
+    graph = SaveBoom([{"final_trade_decision": "评级: 买入", "final_rating": "Buy"}], calls)
+    _patched(monkeypatch, graph)
+    thread = runner.run_analysis_in_thread("600519", "2026-11-26", {}, tracker)
+    thread.join(5)
+    assert tracker.error == "disk"
+    assert "clear" not in calls

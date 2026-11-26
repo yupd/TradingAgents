@@ -98,14 +98,15 @@ def _run(
         graph.clear_checkpoint_on_success(ticker, trade_date)
 
     checkpoint_tid = graph.begin_checkpoint(ticker, trade_date)
-    init_state = graph.create_run_state(ticker, trade_date)
-    args = graph.propagator.get_graph_args(callbacks=[stats])
-    if checkpoint_tid is not None:
-        args.setdefault("config", {}).setdefault("configurable", {})["thread_id"] = checkpoint_tid
-
     merged: dict = {}
-    stream = graph.stream_run(graph.checkpoint_input(init_state), **args)
+    stream = None
     try:
+        init_state = graph.create_run_state(ticker, trade_date)
+        args = graph.propagator.get_graph_args(callbacks=[stats])
+        if checkpoint_tid is not None:
+            args.setdefault("config", {}).setdefault("configurable", {})["thread_id"] = checkpoint_tid
+
+        stream = graph.stream_run(graph.checkpoint_input(init_state), **args)
         for _messages, chunk in stream:
             tracker.wait_if_paused()
             if tracker.stop_requested:
@@ -119,12 +120,13 @@ def _run(
                 ticker,
                 trade_date,
                 status="paused" if tracker.is_paused else "running",
-                completed_stages=tracker.completed_stages,
+                completed_stages=list(tracker.completed_stages),
             )
             s = stats.get_stats()
             tracker.update_stats(s["llm_calls"], s["tool_calls"], s["tokens_in"], s["tokens_out"])
     finally:
-        stream.close()
+        if stream is not None:
+            stream.close()
         graph.end_checkpoint()
 
     if tracker.stop_requested:
@@ -135,8 +137,9 @@ def _run(
 
     normalize_report_state_mentions(merged, ticker)
     graph.record_decision(ticker, trade_date, merged)
-    graph.clear_checkpoint_on_success(ticker, trade_date)
     saved = graph.save_reports(merged, ticker)
+    # Only a fully written report may drop the checkpoint; a save failure keeps it resumable.
+    graph.clear_checkpoint_on_success(ticker, trade_date)
     tracker.saved_path = str(saved)
     tracker.mark_complete(merged, run_rating(merged))
     clear_incomplete_task(ticker, trade_date)
@@ -158,7 +161,7 @@ def run_analysis_in_thread(
         ticker,
         trade_date,
         status="running",
-        completed_stages=tracker.completed_stages,
+        completed_stages=list(tracker.completed_stages),
     )
 
     def _target() -> None:
@@ -173,7 +176,7 @@ def run_analysis_in_thread(
                 trade_date,
                 status="error",
                 error=str(exc),
-                completed_stages=tracker.completed_stages,
+                completed_stages=list(tracker.completed_stages),
             )
             tracker.mark_error(str(exc))
 

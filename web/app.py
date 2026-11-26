@@ -17,12 +17,10 @@ if str(_PROJECT_ROOT) not in sys.path:
 # load_dotenv 只在进程启动时执行一次，启动后改 .env 需重启 Web 服务。
 load_dotenv(_PROJECT_ROOT / ".env", override=True)
 
-from tradingagents.dataflows.vendors.a_share.market import apply_default_market_config  # noqa: E402
-from tradingagents.default_config import DEFAULT_CONFIG  # noqa: E402
-
 from web.components.progress_panel import render_progress  # noqa: E402
 from web.components.report_viewer import render_report  # noqa: E402
 from web.components.sidebar import render_sidebar, validate_model_selection  # noqa: E402
+from web.config import build_run_config  # noqa: E402
 from web.history import extract_signal, load_analysis  # noqa: E402
 from web.progress import ProgressTracker  # noqa: E402
 from web.runner import run_analysis_in_thread  # noqa: E402
@@ -146,23 +144,7 @@ st.markdown(
 # ── Build config ─────────────────────────────────────────────────────────────
 
 def _build_config(ticker: str) -> dict:
-    config = DEFAULT_CONFIG.copy()
-    config["llm_provider"] = (
-        st.session_state.get("llm_provider") or DEFAULT_CONFIG["llm_provider"]
-    )
-    config["deep_think_llm"] = (
-        st.session_state.get("deep_think_llm") or DEFAULT_CONFIG["deep_think_llm"]
-    )
-    config["quick_think_llm"] = (
-        st.session_state.get("quick_think_llm") or DEFAULT_CONFIG["quick_think_llm"]
-    )
-    backend_url = (
-        st.session_state.get("llm_base_url") or DEFAULT_CONFIG.get("backend_url") or ""
-    ).strip()
-    config["backend_url"] = backend_url or None
-    config["checkpoint_enabled"] = True
-    config["output_language"] = "Chinese"
-    return apply_default_market_config(ticker, config)
+    return build_run_config(dict(st.session_state), ticker)
 
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
