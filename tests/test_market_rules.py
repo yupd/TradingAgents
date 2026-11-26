@@ -168,6 +168,13 @@ def test_classify_trend_tie_is_sideways():
     assert classify_trend(_hs300(close=105.0)) == Trend("震荡", False, True, True)
 
 
+def test_classify_trend_all_equal_is_sideways():
+    # Equality fails the strict "<" down conditions too, so it stays 震荡.
+    assert classify_trend(
+        _hs300(close=100.0, ma20=100.0, ma60=100.0, return_20d=0.0)
+    ) == Trend("震荡", False, False, False)
+
+
 @pytest.mark.parametrize("missing", ["close", "ma20", "ma60", "return_20d"])
 def test_classify_trend_undetermined(missing):
     quote = replace(_hs300(), **{missing: None})

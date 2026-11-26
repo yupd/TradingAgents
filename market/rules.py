@@ -29,9 +29,10 @@ def classify_trend(quote: IndexQuote) -> Trend:
     close_above_ma20 = close > ma20
     ma20_above_ma60 = ma20 > ma60
     return_20d_positive = return_20d > 0
+    # Strict inequalities on both sides: equality counts as 震荡, not 下行.
     if close_above_ma20 and ma20_above_ma60 and return_20d_positive:
         level = "上行"
-    elif not (close_above_ma20 or ma20_above_ma60 or return_20d_positive):
+    elif close < ma20 and ma20 < ma60 and return_20d < 0:
         level = "下行"
     else:
         level = "震荡"
