@@ -231,6 +231,27 @@ def fetch_szse_turnover(trade_date: str) -> Turnover | None:
     return _parse_szse_turnover(fetch(date=trade_date.replace("-", "")), trade_date)
 
 
+def build_turnover(sh: Turnover | None, sz: Turnover | None, trade_date: str) -> Turnover:
+    """Combined same-day turnover; total needs both sides, 20-day stats stay unset."""
+    sh_value = sh.sh if sh else None
+    sz_value = sz.sz if sz else None
+    both = sh_value is not None and sz_value is not None
+    return Turnover(
+        sh=sh_value,
+        sz=sz_value,
+        total=sh_value + sz_value if both else None,
+        note="沪深股票成交额（含B股）；量能倍数见指数小节（指数成交量口径）",
+        as_of=trade_date,
+    )
+
+
+def fetch_turnover(trade_date: str) -> Turnover:
+    """SSE and SZSE stock turnover for the same session."""
+    return build_turnover(
+        fetch_sse_turnover(trade_date), fetch_szse_turnover(trade_date), trade_date
+    )
+
+
 @dataclass
 class MarketFacts:
     trade_date: str

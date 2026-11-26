@@ -6,15 +6,18 @@ import pytest
 from market.fetch import (
     INDEXES,
     IndexSpec,
+    Turnover,
     _em_index_bars,
     _parse_sse_turnover,
     _parse_szse_turnover,
     _sina_index_bars,
     _tencent_index_bars,
+    build_turnover,
     fetch_index_bars,
     fetch_indices,
     fetch_sse_turnover,
     fetch_szse_turnover,
+    fetch_turnover,
 )
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
@@ -463,3 +466,52 @@ def test_fetch_szse_turnover_falls_back_to_old_name(monkeypatch):
 
     assert fetch_szse_turnover("2026-11-26").sz == pytest.approx(7314.446)
     assert calls == ["20261126"]
+
+
+def test_build_turnover_sums_both_markets():
+    turnover = build_turnover(
+        Turnover(sh=6539.10), Turnover(sz=7314.446), "2026-11-26"
+    )
+
+    assert turnover.sh == pytest.approx(6539.10)
+    assert turnover.sz == pytest.approx(7314.446)
+    assert turnover.total == pytest.approx(13853.546)
+    assert turnover.note == "沪深股票成交额（含B股）；量能倍数见指数小节（指数成交量口径）"
+    assert turnover.as_of == "2026-11-26"
+    assert turnover.avg20 is None
+    assert turnover.ratio is None
+
+
+def test_build_turnover_leaves_total_none_when_one_side_missing():
+    only_sz = build_turnover(None, Turnover(sz=7314.446), "2026-11-26")
+    only_sh = build_turnover(Turnover(sh=6539.10), None, "2026-11-26")
+
+    assert (only_sz.sh, only_sz.sz, only_sz.total) == (
+        None, pytest.approx(7314.446), None,
+    )
+    assert (only_sh.sh, only_sh.sz, only_sh.total) == (
+        pytest.approx(6539.10), None, None,
+    )
+
+
+def test_fetch_turnover_combines_both_sources_for_same_date(monkeypatch):
+    calls = []
+
+    def fake_sh(date):
+        calls.append(("sh", date))
+        return Turnover(sh=6539.10)
+
+    def fake_sz(date):
+        calls.append(("sz", date))
+        return Turnover(sz=7314.446)
+
+    monkeypatch.setattr("market.fetch.fetch_sse_turnover", fake_sh)
+    monkeypatch.setattr("market.fetch.fetch_szse_turnover", fake_sz)
+
+    turnover = fetch_turnover("2026-11-26")
+
+    assert calls == [("sh", "2026-11-26"), ("sz", "2026-11-26")]
+    assert turnover.total == pytest.approx(13853.546)
+    assert (turnover.sh, turnover.sz) == (
+        pytest.approx(6539.10), pytest.approx(7314.446),
+    )
