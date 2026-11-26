@@ -375,8 +375,10 @@ def _parse_industries(frame, as_of: str) -> Industries:
     )
 
 
-def fetch_industries(trade_date: str) -> Industries | None:
-    """THS industry board snapshot; network errors propagate to the caller."""
+def fetch_industries(trade_date: str) -> Industries:
+    """THS industry board snapshot; historical dates are refused, the board is current-only."""
+    if trade_date < datetime.now().strftime("%Y-%m-%d"):
+        return Industries(gainers=[], losers=[], as_of=trade_date, note="仅当日，历史不可用")
     import akshare as ak
 
     as_of = datetime.now().strftime("%Y-%m-%d %H:%M")

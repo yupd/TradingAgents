@@ -1,5 +1,6 @@
 import re
 import sys
+from datetime import datetime
 from types import SimpleNamespace
 
 import pandas as pd
@@ -65,6 +66,26 @@ def test_parse_industries_fewer_than_five_takes_all():
     assert industries.losers == [("行业B", 1.0), ("行业A", 3.0)]
 
 
+def test_fetch_industries_historical_date_skips_akshare(monkeypatch):
+    calls = []
+
+    def summary():
+        calls.append(True)
+        return _industry_frame()
+
+    monkeypatch.setitem(
+        sys.modules, "akshare", SimpleNamespace(stock_board_industry_summary_ths=summary)
+    )
+
+    industries = fetch_industries("2020-01-02")
+
+    assert calls == []
+    assert industries.gainers == []
+    assert industries.losers == []
+    assert industries.as_of == "2020-01-02"
+    assert industries.note == "仅当日，历史不可用"
+
+
 def test_fetch_industries_calls_akshare_and_parses(monkeypatch):
     calls = []
 
@@ -76,7 +97,7 @@ def test_fetch_industries_calls_akshare_and_parses(monkeypatch):
         sys.modules, "akshare", SimpleNamespace(stock_board_industry_summary_ths=summary)
     )
 
-    industries = fetch_industries("2026-11-26")
+    industries = fetch_industries(datetime.now().strftime("%Y-%m-%d"))
 
     assert calls == [True]
     assert industries.gainers[0] == ("行业L", 5.5)
