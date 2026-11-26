@@ -271,6 +271,9 @@ def _no_network(*args, **kwargs):
 def test_fetch_indices_returns_five_quotes_in_order(monkeypatch):
     trade_date = "2026-11-26"
     days = _recent_days(trade_date, 65)
+    expected_start = (
+        datetime.strptime(trade_date, "%Y-%m-%d") - timedelta(days=400)
+    ).strftime("%Y-%m-%d")
     calls = []
 
     def fake_fetch(spec, start, end):
@@ -288,7 +291,7 @@ def test_fetch_indices_returns_five_quotes_in_order(monkeypatch):
     assert all(quote.return_60d is not None and quote.ma60 is not None for quote in quotes)
     assert [spec for spec, _, _ in calls] == list(INDEXES)
     assert all(end == trade_date for _, _, end in calls)
-    assert all(start < trade_date for _, start, _ in calls)
+    assert all(start == expected_start for _, start, _ in calls)
 
 
 def test_fetch_indices_survives_none_and_exception(monkeypatch):
@@ -313,6 +316,18 @@ def test_fetch_indices_survives_none_and_exception(monkeypatch):
     quotes_by_code = {quote.code: quote for quote in quotes}
     for spec in (none_spec, error_spec):
         quote = quotes_by_code[spec.code]
-        assert (quote.name, quote.close, quote.return_60d) == (spec.name, None, None)
+        assert (quote.name, quote.code) == (spec.name, spec.code)
+        assert (
+            quote.close,
+            quote.change_pct,
+            quote.return_5d,
+            quote.return_20d,
+            quote.return_60d,
+            quote.ma20,
+            quote.ma60,
+            quote.volume_ratio,
+            quote.source,
+            quote.as_of,
+        ) == (None,) * 10
     healthy = [q for q in quotes if q.code not in {none_spec.code, error_spec.code}]
     assert all(quote.close is not None and quote.return_60d is not None for quote in healthy)
