@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
 from tradingagents.dataflows.vendors.a_share import http
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -245,10 +248,21 @@ def build_turnover(sh: Turnover | None, sz: Turnover | None, trade_date: str) ->
     )
 
 
+def _fetch_turnover_side(source: str, fetch, trade_date: str) -> Turnover | None:
+    """One exchange's turnover; a source error yields ``None`` instead of aborting."""
+    try:
+        return fetch(trade_date)
+    except Exception as exc:
+        logger.debug("turnover fetch failed for %s: %s", source, exc)
+        return None
+
+
 def fetch_turnover(trade_date: str) -> Turnover:
-    """SSE and SZSE stock turnover for the same session."""
+    """SSE and SZSE stock turnover for the same session; a failed side stays empty."""
     return build_turnover(
-        fetch_sse_turnover(trade_date), fetch_szse_turnover(trade_date), trade_date
+        _fetch_turnover_side("SSE", fetch_sse_turnover, trade_date),
+        _fetch_turnover_side("SZSE", fetch_szse_turnover, trade_date),
+        trade_date,
     )
 
 

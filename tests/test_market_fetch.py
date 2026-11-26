@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 
@@ -515,3 +516,60 @@ def test_fetch_turnover_combines_both_sources_for_same_date(monkeypatch):
     assert (turnover.sh, turnover.sz) == (
         pytest.approx(6539.10), pytest.approx(7314.446),
     )
+
+
+def test_fetch_turnover_keeps_sse_when_szse_raises(monkeypatch, caplog):
+    def fake_sh(date):
+        return Turnover(sh=6539.10)
+
+    def fake_sz(date):
+        raise RuntimeError("szse down")
+
+    monkeypatch.setattr("market.fetch.fetch_sse_turnover", fake_sh)
+    monkeypatch.setattr("market.fetch.fetch_szse_turnover", fake_sz)
+
+    with caplog.at_level(logging.DEBUG, logger="market.fetch"):
+        turnover = fetch_turnover("2026-11-26")
+
+    degraded = [r for r in caplog.records if r.levelno == logging.DEBUG]
+    assert len(degraded) == 1
+    assert "SZSE" in degraded[0].getMessage()
+    assert "szse down" in degraded[0].getMessage()
+    assert turnover.sh == pytest.approx(6539.10)
+    assert turnover.sz is None
+    assert turnover.total is None
+    assert turnover.note == "沪深股票成交额（含B股）；量能倍数见指数小节（指数成交量口径）"
+    assert turnover.as_of == "2026-11-26"
+
+
+def test_fetch_turnover_keeps_szse_when_sse_raises(monkeypatch):
+    def fake_sh(date):
+        raise RuntimeError("sse down")
+
+    def fake_sz(date):
+        return Turnover(sz=7314.446)
+
+    monkeypatch.setattr("market.fetch.fetch_sse_turnover", fake_sh)
+    monkeypatch.setattr("market.fetch.fetch_szse_turnover", fake_sz)
+
+    turnover = fetch_turnover("2026-11-26")
+
+    assert turnover.sh is None
+    assert turnover.sz == pytest.approx(7314.446)
+    assert turnover.total is None
+    assert turnover.note == "沪深股票成交额（含B股）；量能倍数见指数小节（指数成交量口径）"
+    assert turnover.as_of == "2026-11-26"
+
+
+def test_fetch_turnover_returns_all_none_when_both_raise(monkeypatch):
+    def fail(date):
+        raise RuntimeError("source down")
+
+    monkeypatch.setattr("market.fetch.fetch_sse_turnover", fail)
+    monkeypatch.setattr("market.fetch.fetch_szse_turnover", fail)
+
+    turnover = fetch_turnover("2026-11-26")
+
+    assert (turnover.sh, turnover.sz, turnover.total) == (None, None, None)
+    assert turnover.note == "沪深股票成交额（含B股）；量能倍数见指数小节（指数成交量口径）"
+    assert turnover.as_of == "2026-11-26"
