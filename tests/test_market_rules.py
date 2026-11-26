@@ -77,6 +77,18 @@ def test_build_index_quote_window_edges():
     assert at_sixty_one.return_60d == pytest.approx((160 / 100 - 1) * 100)
 
 
+def test_build_index_quote_at_thirty_bars_omits_sixty_day_windows():
+    quote = build_index_quote(SPEC, _bars(30))
+
+    assert quote.return_60d is None
+    assert quote.ma60 is None
+    assert quote.change_pct == pytest.approx((129 / 128 - 1) * 100)
+    assert quote.return_5d == pytest.approx((129 / 124 - 1) * 100)
+    assert quote.return_20d == pytest.approx((129 / 109 - 1) * 100)
+    assert quote.ma20 == pytest.approx(119.5)
+    assert quote.volume_ratio == pytest.approx(1029 / 1018.5)
+
+
 def test_build_index_quote_zero_volume_baseline_yields_none():
     bars = [replace(bar, volume=0.0) for bar in _bars(21)[:-1]]
     bars.append(replace(_bars(21)[-1], volume=1000.0))
