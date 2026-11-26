@@ -10,6 +10,7 @@ import cli.main as m
 from market.fetch import Industries, IndexQuote, MarketNews, NewsResult, Sentiment, Turnover
 from market.summarize import Summary
 
+
 def _patch_empty_fetchers(monkeypatch, day="2026-11-26"):
     """Every source returns nothing, as when the network is down."""
     monkeypatch.setattr("market.rules.resolve_trade_date", lambda date: (day, None))
