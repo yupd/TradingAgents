@@ -44,15 +44,20 @@ dev = [
 bedrock = [
     "langchain-aws>=1.7.9",
 ]
+web = [
+    "streamlit>=1.45.0",
+    "fpdf2>=2.8.6",
+]
 
 [project.scripts]
 tradingagents = "cli.main:app"
+tradingagents-web = "web.launch:main"
 
 [tool.setuptools.dynamic]
 version = {attr = "tradingagents.__version__"}
 
 [tool.setuptools.packages.find]
-include = ["tradingagents*", "cli*"]
+include = ["tradingagents*", "cli*", "web*"]
 
 [tool.setuptools.package-data]
 cli = ["static/*"]

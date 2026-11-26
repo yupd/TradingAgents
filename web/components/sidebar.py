@@ -102,12 +102,34 @@ def _load_saved_llm_config() -> None:
     st.session_state.setdefault(
         "llm_provider_idx", keys.index(provider) if provider in keys else 0
     )
-    st.session_state.setdefault("quick_model_idx", cfg.get("quick_model_idx", 0))
-    st.session_state.setdefault("deep_model_idx", cfg.get("deep_model_idx", 0))
+    if "quick_model_idx" in cfg:
+        st.session_state.setdefault("quick_model_idx", cfg["quick_model_idx"])
+    if "deep_model_idx" in cfg:
+        st.session_state.setdefault("deep_model_idx", cfg["deep_model_idx"])
     st.session_state.setdefault("llm_base_url", cfg.get("llm_base_url", ""))
     for key in ("custom_quick_model", "custom_deep_model"):
         if cfg.get(key):
             st.session_state.setdefault(key, cfg[key])
+
+    # With no saved selection, start from .env's provider and model IDs.
+    selected = keys[st.session_state["llm_provider_idx"]]
+    if selected != DEFAULT_CONFIG.get("llm_provider"):
+        return
+    options = MODEL_OPTIONS.get(selected)
+    if not options:
+        return
+    for mode, cfg_key, idx_key, text_key in (
+        ("quick", "quick_think_llm", "quick_model_idx", "custom_quick_model"),
+        ("deep", "deep_think_llm", "deep_model_idx", "custom_deep_model"),
+    ):
+        target = DEFAULT_CONFIG.get(cfg_key)
+        values = [value for _, value in options[mode]]
+        if not target:
+            continue
+        if target in values:
+            st.session_state.setdefault(idx_key, values.index(target))
+        else:
+            st.session_state.setdefault(text_key, target)
 
 
 def _save_llm_config() -> None:
