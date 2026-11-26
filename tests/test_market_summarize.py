@@ -7,7 +7,7 @@ from market.fetch import (
     Turnover,
 )
 from market.rules import Trend
-from market.summarize import facts_block
+from market.summarize import facts_block, summarize_market
 
 
 def _full_facts() -> MarketFacts:
@@ -81,6 +81,42 @@ def test_partial_data_has_no_dangling_units():
     assert "涨跌 不可用" in block
     assert "不可用 亿元" not in block
     assert "## 成交额\n不可用" in block
+
+
+class _FakeLLM:
+    def __init__(self, content: str) -> None:
+        self.content = content
+        self.calls: list[str] = []
+
+    def invoke(self, prompt: str):
+        self.calls.append(prompt)
+        return type("Message", (), {"content": self.content})()
+
+
+def test_summarize_calls_model_once_with_facts_and_constraints():
+    llm = _FakeLLM("  要点一\n要点二  ")
+    summarize_market(_full_facts(), llm)
+
+    assert len(llm.calls) == 1
+    prompt = llm.calls[0]
+    assert "# 大盘事实" in prompt
+    assert "趋势：上行" in prompt
+    assert "3–5 条" in prompt
+    assert "不得引入事实之外的数字" in prompt
+    assert "不得改档位" in prompt
+
+
+def test_summarize_returns_stripped_model_content():
+    llm = _FakeLLM("  解释文本  ")
+    assert summarize_market(_full_facts(), llm) == "解释文本"
+
+
+def test_summarize_accepts_plain_string_result():
+    class _StringLLM:
+        def invoke(self, prompt: str) -> str:
+            return " 纯文本 "
+
+    assert summarize_market(_full_facts(), _StringLLM()) == "纯文本"
 
 
 def test_missing_groups_render_unavailable_without_raising():

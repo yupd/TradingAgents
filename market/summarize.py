@@ -119,3 +119,22 @@ def facts_block(facts: MarketFacts) -> str:
     lines = [f"# 大盘事实 {facts.trade_date}"]
     lines.extend(f"## {title}\n{body}" for title, body in sections)
     return "\n\n".join(lines)
+
+
+_PROMPT = """你是一名 A 股盘后复盘助手。请只解释下面给出的大盘事实。
+
+要求：
+1. 用中文写 3–5 条要点，每条以 "- " 开头。
+2. 只解释已给出的事实，不做预测；不得引入事实之外的数字。
+3. 不得改档位：不得改变或改用与事实不同的趋势档位。
+4. 新闻标题仅为媒体口径，未核实。
+
+{block}
+"""
+
+
+def summarize_market(facts: MarketFacts, llm) -> str:
+    """One model call that only explains the deterministic facts."""
+    result = llm.invoke(_PROMPT.format(block=facts_block(facts)))
+    text = result if isinstance(result, str) else result.content
+    return text.strip()
