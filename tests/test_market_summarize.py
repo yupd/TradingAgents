@@ -7,7 +7,13 @@ from market.fetch import (
     Turnover,
 )
 from market.rules import Trend
-from market.summarize import Summary, facts_block, summarize_market, validate_numbers
+from market.summarize import (
+    Summary,
+    facts_block,
+    safe_summarize,
+    summarize_market,
+    validate_numbers,
+)
 
 
 def _full_facts() -> MarketFacts:
@@ -166,3 +172,32 @@ def test_missing_groups_render_unavailable_without_raising():
         "## 新闻",
     ):
         assert heading in block
+
+
+class _RaisingLLM:
+    def invoke(self, prompt: str):
+        raise RuntimeError("model down")
+
+
+def test_safe_summarize_degrades_when_model_raises():
+    result = safe_summarize(_full_facts(), _RaisingLLM())
+
+    assert result.text == "摘要生成失败"
+    assert result.dropped == 0
+
+
+def test_safe_summarize_degrades_when_all_sentences_dropped():
+    result = safe_summarize(_full_facts(), _FakeLLM("- 目标 9999 点。"))
+
+    assert result.text == "摘要生成失败"
+    assert result.dropped == 1
+
+
+def test_safe_summarize_keeps_valid_sentences_and_notes_dropped():
+    llm = _FakeLLM("- 上证收于 3456.78。\n- 目标 9999 点。")
+    result = safe_summarize(_full_facts(), llm)
+
+    assert result.text.startswith("- 上证收于 3456.78。")
+    assert "9999" not in result.text
+    assert "已丢弃 1 句" in result.text
+    assert result.dropped == 1

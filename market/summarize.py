@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 
 from market.fetch import Industries, IndexQuote, MarketFacts, MarketNews, Sentiment, Turnover
 from market.rules import Trend
+
+logger = logging.getLogger(__name__)
 
 _NA = "不可用"
 _PCT = "{:+.2f}%"
@@ -169,3 +172,19 @@ def validate_numbers(text: str, facts_text: str) -> Summary:
             continue
         kept.append(chunk)
     return Summary("".join(kept).strip(), dropped)
+
+
+def safe_summarize(facts: MarketFacts, llm) -> Summary:
+    """Degrade to a fixed line when the model fails or every sentence is rejected."""
+    try:
+        raw = summarize_market(facts, llm)
+    except Exception as exc:
+        logger.debug("market summary failed: %s", exc)
+        return Summary("摘要生成失败", 0)
+    validated = validate_numbers(raw, facts_block(facts))
+    if not validated.text:
+        return Summary("摘要生成失败", validated.dropped)
+    if validated.dropped:
+        note = f"（已丢弃 {validated.dropped} 句模型输出，含未提供数字）"
+        return Summary(f"{validated.text}\n{note}", validated.dropped)
+    return validated
