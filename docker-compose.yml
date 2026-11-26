@@ -1,0 +1,23 @@
+services:
+  web:
+    build:
+      context: .
+      args:
+        APT_MIRROR: ${APT_MIRROR:-}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        PIP_TRUSTED_HOST: ${PIP_TRUSTED_HOST:-}
+    image: tradingagents-web:dev
+    env_file:
+      - .env
+    ports:
+      - "${STREAMLIT_SERVER_PORT:-8501}:${STREAMLIT_SERVER_PORT:-8501}"
+    volumes:
+      - ./data:/home/appuser/.tradingagents
+      - ./reports:/app/reports
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,urllib.request;urllib.request.urlopen('http://127.0.0.1:' + os.environ.get('STREAMLIT_SERVER_PORT','8501') + '/_stcore/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

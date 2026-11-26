@@ -22,6 +22,27 @@ cp .env.example .env        # 填模型 key
 ~/.local/share/vibe-astock-python312/bin/python3 -m venv .venv
 ```
 
+## 用 Claude Code 当前的网关
+
+Claude Code 的网关是 Anthropic 兼容入口，同时也提供 `/chat/completions`。TradingAgents 用 `openai_compatible` 接它，且**不需要把密钥复制到 `.env`**：当没有设置 `TRADINGAGENTS_LLM_BACKEND_URL` / `OPENAI_COMPATIBLE_API_KEY` 时，会自动继承当前进程的 `ANTHROPIC_BASE_URL` 和 `ANTHROPIC_AUTH_TOKEN`。
+
+`.env` 只需：
+
+```ini
+TRADINGAGENTS_LLM_PROVIDER=openai_compatible
+TRADINGAGENTS_DEEP_THINK_LLM=deepseek-flash
+TRADINGAGENTS_QUICK_THINK_LLM=deepseek-flash
+```
+
+在 Claude Code 的终端里直接运行即可。若在普通 shell 里运行，先把网关配置导入：
+
+```bash
+export ANTHROPIC_BASE_URL=...   # 取 ~/.claude/settings.json 的 env
+export ANTHROPIC_AUTH_TOKEN=... # 同上；不要写进仓库
+```
+
+也可以显式指定 `TRADINGAGENTS_LLM_BACKEND_URL` 与 `OPENAI_COMPATIBLE_API_KEY`，显式值优先。
+
 ## 模型
 
 模型走 OpenAI 兼容接口（DeepSeek、OpenAI、Anthropic、Google、Ollama/vLLM 等）。最少配置：
@@ -42,12 +63,74 @@ DEEPSEEK_API_KEY=...
 
 # 深挖港股（只用上游 4 个分析师，走 yfinance）
 .venv/bin/python -m cli.main deep 0700.HK
+
+# 每日大盘复盘（--date 省略时取最近交易日）
+.venv/bin/python -m cli.main market --date 2026-11-26
 ```
 
 报告路径：
 
 - 简报：`reports/brief/YYYY-MM-DD.md`
 - 深挖：`reports/deep/<CODE>/<YYYY-MM-DD>/complete_report.md`
+- 大盘复盘：`reports/market/YYYY-MM-DD.md`
+
+大盘复盘先确定性收集指数趋势、成交量、情绪与行业强弱，再调用一次模型写叙述，报告固定七节。数据口径：不含北向资金；行业强弱只有当日数据，历史报告标注不可用；成交额一节仅当日沪/深/合计，20 日量能倍数按指数成交量计算，见「指数趋势」表格下的脚注；东方财富限流时对应区块降级为「数据缺口」，不会导致整份报告失败。
+
+## Docker 运行
+
+Web UI 与 CLI 在同一镜像内，默认启动 Web UI（Streamlit，端口 8501）。
+
+前置：Docker 与 Compose 插件；`.env` 与本地运行共用。
+
+```bash
+cp .env.example .env        # 填模型 key（已有则跳过）
+mkdir -p data reports       # 分析结果/缓存/断点与 CLI 报告的宿主目录
+docker compose up -d --build
+```
+
+打开 <http://localhost:8501>。状态与日志：
+
+```bash
+docker compose ps
+docker compose logs -f web
+docker compose down         # 停止；./data 保留
+```
+
+`./data` 对应容器内 `~/.tradingagents`：`logs/` 是分析报告，`cache/` 是数据缓存，另有断点与未完成任务状态。CLI 的 `deep`/`brief`/`market` 报告写到 `./reports`。迁入本机历史：
+
+```bash
+mkdir -p data
+cp -r ~/.tradingagents/logs/. data/logs/
+```
+
+同一镜像跑 CLI（交互式命令加 `-it`）：
+
+```bash
+docker compose run --rm web tradingagents --help
+docker compose run --rm web tradingagents deep 600519 2026-11-25
+```
+
+改端口两种方式：在 `.env` 设 `STREAMLIT_SERVER_PORT=8599`，Compose 会同步容器端口、宿主机映射与健康检查；或只改 `ports` 左侧（如 `"8601:8501"`，容器内仍是 8501）。
+
+容器内用户是 uid 1000。若宿主机当前用户不是 1000，`./data` 可能不可写：
+
+```bash
+sudo chown -R 1000:1000 data
+```
+
+国内网络构建慢或失败时，覆盖构建源（apt 参数填镜像主机名）：
+
+```bash
+PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+APT_MIRROR=mirrors.tuna.tsinghua.edu.cn \
+docker compose build
+```
+
+说明：
+
+- 镜像不含 `.env`；配置只通过 `env_file` 在运行时注入。
+- 服务监听 `0.0.0.0:8501` 且无鉴权，仅限本机/内网使用；公网部署需自行加反向代理与认证。
+- 健康检查走 `/_stcore/health`，`docker compose ps` 显示 `healthy` 即可用。
 
 ## 自选股
 

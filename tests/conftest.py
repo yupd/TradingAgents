@@ -56,6 +56,13 @@ def pytest_configure(config):
 
 
 @pytest.fixture(autouse=True)
+def _no_ambient_claude_gateway(monkeypatch):
+    """Claude Code exports its own gateway; tests must not inherit it by accident."""
+    for name in ("ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _no_network(request, monkeypatch):
     """Tests do not reach the network; one that must is marked integration."""
     if request.node.get_closest_marker("integration"):

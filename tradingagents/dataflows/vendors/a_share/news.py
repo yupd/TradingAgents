@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 
 import pandas as pd
 
+from . import akshare_patch  # noqa: F401  (installs the Eastmoney wrapper)
 from . import http
 from .symbols import parse_ashare
 from .types import AStockSymbol, NewsItem

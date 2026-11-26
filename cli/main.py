@@ -8,7 +8,7 @@ from rich.markup import escape
 from cli.display import console
 from cli.models import AnalystType, AssetType
 from cli.prompts import filter_analysts_for_asset_type, parse_analysts
-from cli.run import run_analysis, run_brief, run_deep
+from cli.run import MarketDataUnavailable, run_analysis, run_brief, run_deep, run_market
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients.openai_client import SIGNED_IN_PROVIDERS
 
@@ -116,6 +116,24 @@ def brief(
     """Write the daily A-share brief for the watchlist."""
     path = run_brief(trade_date=date, watchlist=watchlist)
     console.print(f"[green]Brief written:[/green] {path}")
+
+
+@app.command()
+def market(
+    date: str = typer.Option(
+        None, "--date", help="Trade date, YYYY-MM-DD; defaults to the latest session"
+    ),
+):
+    """Write the daily A-share market trend report."""
+    try:
+        path = run_market(date)
+    except MarketDataUnavailable as exc:
+        console.print(f"[red]{escape(str(exc))}[/red]")
+        raise typer.Exit(code=1) from None
+    except ValueError as exc:
+        console.print(f"[red]{escape(str(exc))}[/red]")
+        raise typer.Exit(code=2) from None
+    console.print(f"[green]Market report written:[/green] {path}")
 
 
 # The plans `login` and `logout` take: the providers signed in to, not keyed.

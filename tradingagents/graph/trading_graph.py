@@ -360,6 +360,9 @@ class TradingAgentsGraph:
             "sentiment_report": final_state["sentiment_report"],
             "news_report": final_state["news_report"],
             "fundamentals_report": final_state["fundamentals_report"],
+            "policy_report": final_state.get("policy_report", ""),
+            "hot_money_report": final_state.get("hot_money_report", ""),
+            "lockup_report": final_state.get("lockup_report", ""),
             "investment_debate_state": {
                 "bull_history": final_state["investment_debate_state"]["bull_history"],
                 "bear_history": final_state["investment_debate_state"]["bear_history"],
