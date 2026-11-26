@@ -1,3 +1,5 @@
+import pandas as pd
+
 from market.fetch import (
     IndexQuote,
     Industries,
@@ -5,6 +7,7 @@ from market.fetch import (
     MarketNews,
     Sentiment,
     Turnover,
+    _parse_industries,
 )
 from market.render import render_market
 from market.rules import Flag, Trend
@@ -36,6 +39,7 @@ def _full_facts() -> MarketFacts:
             total=11500.46,
             note="沪深股票成交额",
             as_of="2026-11-25",
+            source="上交所/深交所",
         ),
         sentiment=Sentiment(
             limit_up=45,
@@ -44,12 +48,14 @@ def _full_facts() -> MarketFacts:
             broken_rate=15.1,
             max_streak=5,
             as_of="2026-11-25",
+            source="东财",
         ),
         industries=Industries(
             gainers=[("半导体", 3.2), ("电池", 2.1)],
             losers=[("银行", -1.5), ("保险", -0.9)],
             as_of="2026-11-25 15:00",
             note="仅当日，历史不可用",
+            source="同花顺",
         ),
         news=[
             MarketNews(title="央行降准", published_at="2026-11-25 09:00", source="东财")
@@ -116,8 +122,28 @@ def test_partial_facts_mark_unavailable_without_units_or_errors():
     assert "不可用 亿元" not in report
     assert "趋势：无法判定" in report
     assert "数据不可用" in report
-    assert "来源：东财 | As of: 不可用" in report
+    assert "来源：不可用 | As of: 不可用" in report
     assert "## 数据缺口\n\n无" in report
+
+
+def test_industries_parsed_from_frame_render_name_and_percentage():
+    frame = pd.DataFrame({"板块": ["半导体", "银行"], "涨跌幅": [3.2, -1.5]})
+    facts = MarketFacts(
+        trade_date="2026-11-25",
+        industries=_parse_industries(frame, "2026-11-25 15:00"),
+    )
+
+    report = render_market(facts, Summary(""))
+
+    assert "涨幅前5：半导体 +3.2%" in report
+    assert "跌幅前5：银行 -1.5%" in report
+    assert "来源：同花顺 | As of: 2026-11-25 15:00" in report
+
+
+def test_empty_indices_render_data_unavailable():
+    report = render_market(MarketFacts(trade_date="2026-11-25"), Summary(""))
+
+    assert "## 指数趋势\n\n数据不可用" in report
 
 
 def test_gaps_render_as_bullets_and_northbound_is_absent():

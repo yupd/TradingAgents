@@ -71,6 +71,8 @@ def _conclusion(facts: MarketFacts, summary: Summary) -> str:
 
 
 def _indices(facts: MarketFacts) -> str:
+    if not facts.indices:
+        return _UNAVAILABLE
     rows = [
         [
             quote.name,
@@ -107,8 +109,9 @@ def _turnover(turnover) -> str:
     lines = [_table(("指标", "数值"), rows), ""]
     if turnover and turnover.note:
         lines += [f"说明：{turnover.note}", ""]
+    source = turnover.source if turnover and turnover.source else _NA
     as_of = turnover.as_of if turnover and turnover.as_of else _NA
-    lines.append(f"来源：上交所/深交所 | As of: {as_of}")
+    lines.append(f"来源：{source} | As of: {as_of}")
     return "\n".join(lines)
 
 
@@ -122,8 +125,9 @@ def _sentiment(sentiment) -> str:
         f"涨停 {_count(limit_up)} / 跌停 {_count(limit_down)} / 炸板 {_count(broken)}；"
         f"炸板率 {_rate(broken_rate)}；最高连板 {_count(max_streak)}"
     )
+    source = sentiment.source if sentiment and sentiment.source else _NA
     as_of = sentiment.as_of if sentiment and sentiment.as_of else _NA
-    return "\n".join([line, "", f"来源：东财 | As of: {as_of}"])
+    return "\n".join([line, "", f"来源：{source} | As of: {as_of}"])
 
 
 def _industry_line(label: str, rows) -> str:
@@ -140,8 +144,9 @@ def _industries(industries) -> str:
     ]
     if industries and industries.note:
         lines.append(f"说明：{industries.note}")
+    source = industries.source if industries and industries.source else _NA
     as_of = industries.as_of if industries and industries.as_of else _NA
-    lines += ["", f"来源：同花顺 | As of: {as_of}"]
+    lines += ["", f"来源：{source} | As of: {as_of}"]
     return "\n".join(lines)
 
 

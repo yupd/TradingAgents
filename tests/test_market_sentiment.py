@@ -103,6 +103,7 @@ def test_build_sentiment_computes_broken_rate():
     assert (sentiment.broken, sentiment.limit_down) == (30, 5)
     assert sentiment.broken_rate == pytest.approx(30.0)
     assert sentiment.as_of == "2026-11-26"
+    assert sentiment.source == "东财"
 
 
 def _patch_pools(monkeypatch, limit_up=(70, 4), broken=30, limit_down=5):
@@ -120,6 +121,7 @@ def test_fetch_sentiment_populates_all_pools(monkeypatch):
     assert (sentiment.broken, sentiment.limit_down) == (30, 5)
     assert sentiment.broken_rate == pytest.approx(30.0)
     assert sentiment.as_of == "2026-11-26"
+    assert sentiment.source == "东财"
 
 
 def test_fetch_sentiment_limit_down_failure_keeps_other_pools(monkeypatch):

@@ -387,6 +387,7 @@ def test_fetch_sse_turnover_passes_yyyymmdd_and_parses(monkeypatch):
 
     assert calls == ["20261126"]
     assert (turnover.sh, turnover.as_of) == (6539.10, "2026-11-26")
+    assert turnover.source == "上交所"
 
 
 def test_fetch_sse_turnover_prefers_current_akshare_name(monkeypatch):
@@ -420,8 +421,8 @@ def test_parse_szse_turnover_converts_yuan_to_yi():
     turnover = _parse_szse_turnover(_szse_turnover_frame(), "2026-11-26")
 
     assert turnover.sz == pytest.approx(7314.446)
-    assert (turnover.note, turnover.as_of) == (
-        "深交所-股票（含B股与创业板）", "2026-11-26",
+    assert (turnover.note, turnover.as_of, turnover.source) == (
+        "深交所-股票（含B股与创业板）", "2026-11-26", "深交所",
     )
 
 
@@ -451,7 +452,9 @@ def test_fetch_szse_turnover_passes_yyyymmdd_and_parses(monkeypatch):
     turnover = fetch_szse_turnover("2026-11-26")
 
     assert calls == ["20261126"]
-    assert (turnover.sz, turnover.as_of) == (pytest.approx(7314.446), "2026-11-26")
+    assert (turnover.sz, turnover.as_of, turnover.source) == (
+        pytest.approx(7314.446), "2026-11-26", "深交所",
+    )
 
 
 def test_fetch_szse_turnover_falls_back_to_old_name(monkeypatch):
@@ -479,6 +482,7 @@ def test_build_turnover_sums_both_markets():
     assert turnover.total == pytest.approx(13853.546)
     assert turnover.note == "沪深股票成交额（含B股）；量能倍数见指数小节（指数成交量口径）"
     assert turnover.as_of == "2026-11-26"
+    assert turnover.source == "上交所/深交所"
     assert turnover.avg20 is None
     assert turnover.ratio is None
 

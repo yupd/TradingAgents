@@ -41,6 +41,7 @@ class Turnover:
     ratio: float | None = None
     note: str | None = None
     as_of: str | None = None
+    source: str | None = None
 
 
 @dataclass
@@ -51,6 +52,7 @@ class Sentiment:
     broken_rate: float | None = None
     max_streak: int | None = None
     as_of: str | None = None
+    source: str | None = None
 
 
 @dataclass
@@ -59,6 +61,7 @@ class Industries:
     losers: list[tuple[str, float]]
     as_of: str
     note: str | None = None
+    source: str | None = None
 
 
 @dataclass
@@ -222,7 +225,9 @@ def _parse_sse_turnover(frame, trade_date: str) -> Turnover | None:
         return None
     if value != value:  # NaN placeholder from akshare
         return None
-    return Turnover(sh=value, note="上交所-股票（含B股）", as_of=trade_date)
+    return Turnover(
+        sh=value, note="上交所-股票（含B股）", as_of=trade_date, source="上交所"
+    )
 
 
 def fetch_sse_turnover(trade_date: str) -> Turnover | None:
@@ -248,7 +253,12 @@ def _parse_szse_turnover(frame, trade_date: str) -> Turnover | None:
         return None
     if value != value:  # NaN placeholder from akshare
         return None
-    return Turnover(sz=value, note="深交所-股票（含B股与创业板）", as_of=trade_date)
+    return Turnover(
+        sz=value,
+        note="深交所-股票（含B股与创业板）",
+        as_of=trade_date,
+        source="深交所",
+    )
 
 
 def fetch_szse_turnover(trade_date: str) -> Turnover | None:
@@ -265,12 +275,19 @@ def build_turnover(sh: Turnover | None, sz: Turnover | None, trade_date: str) ->
     sh_value = sh.sh if sh else None
     sz_value = sz.sz if sz else None
     both = sh_value is not None and sz_value is not None
+    if both:
+        source = "上交所/深交所"
+    elif sh_value is not None:
+        source = sh.source if sh else None
+    else:
+        source = sz.source if sz else None
     return Turnover(
         sh=sh_value,
         sz=sz_value,
         total=sh_value + sz_value if both else None,
         note="沪深股票成交额（含B股）；量能倍数见指数小节（指数成交量口径）",
         as_of=trade_date,
+        source=source,
     )
 
 
@@ -344,6 +361,7 @@ def build_sentiment(
         limit_down=limit_down,
         broken_rate=broken_rate(limit_up, broken),
         as_of=trade_date,
+        source="东财",
     )
 
 
@@ -374,7 +392,7 @@ def _parse_industries(frame, as_of: str) -> Industries:
     import pandas as pd
 
     if frame is None or frame.empty or "板块" not in frame or "涨跌幅" not in frame:
-        return Industries(gainers=[], losers=[], as_of=as_of)
+        return Industries(gainers=[], losers=[], as_of=as_of, source="同花顺")
     pct = pd.to_numeric(frame["涨跌幅"], errors="coerce")
     valid = frame.assign(涨跌幅=pct).dropna(subset=["涨跌幅"])
     ranked = sorted(
@@ -389,13 +407,17 @@ def _parse_industries(frame, as_of: str) -> Industries:
         gainers=ranked[:5],
         losers=sorted(ranked[-5:], key=lambda row: row[1]),
         as_of=as_of,
+        source="同花顺",
     )
 
 
 def fetch_industries(trade_date: str) -> Industries:
     """THS industry board snapshot; historical dates are refused, the board is current-only."""
     if trade_date < datetime.now().strftime("%Y-%m-%d"):
-        return Industries(gainers=[], losers=[], as_of=trade_date, note="仅当日，历史不可用")
+        return Industries(
+            gainers=[], losers=[], as_of=trade_date, note="仅当日，历史不可用",
+            source="同花顺",
+        )
     import akshare as ak
 
     as_of = datetime.now().strftime("%Y-%m-%d %H:%M")

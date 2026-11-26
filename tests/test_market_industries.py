@@ -36,6 +36,7 @@ def test_parse_industries_splits_top_and_bottom_five():
         ("行业E", -1.5),
     ]
     assert industries.as_of == "2026-11-26 15:00"
+    assert industries.source == "同花顺"
 
 
 def test_parse_industries_drops_non_numeric_and_nan_rows():
@@ -57,6 +58,7 @@ def test_parse_industries_empty_frame_keeps_as_of():
     assert industries.gainers == []
     assert industries.losers == []
     assert industries.as_of == "2026-11-26 15:00"
+    assert industries.source == "同花顺"
 
 
 def test_parse_industries_fewer_than_five_takes_all():
@@ -84,6 +86,7 @@ def test_fetch_industries_historical_date_skips_akshare(monkeypatch):
     assert industries.losers == []
     assert industries.as_of == "2020-01-02"
     assert industries.note == "仅当日，历史不可用"
+    assert industries.source == "同花顺"
 
 
 def test_fetch_industries_calls_akshare_and_parses(monkeypatch):
