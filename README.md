@@ -70,6 +70,62 @@ DEEPSEEK_API_KEY=...
 - 简报：`reports/brief/YYYY-MM-DD.md`
 - 深挖：`reports/deep/<CODE>/<YYYY-MM-DD>/complete_report.md`
 
+## Docker 运行
+
+Web UI 与 CLI 在同一镜像内，默认启动 Web UI（Streamlit，端口 8501）。
+
+前置：Docker 与 Compose 插件；`.env` 与本地运行共用。
+
+```bash
+cp .env.example .env        # 填模型 key（已有则跳过）
+mkdir -p data reports       # 分析结果/缓存/断点与 CLI 报告的宿主目录
+docker compose up -d --build
+```
+
+打开 <http://localhost:8501>。状态与日志：
+
+```bash
+docker compose ps
+docker compose logs -f web
+docker compose down         # 停止；./data 保留
+```
+
+`./data` 对应容器内 `~/.tradingagents`：`logs/` 是分析报告，`cache/` 是数据缓存，另有断点与未完成任务状态。CLI 的 `deep`/`brief` 报告写到 `./reports`。迁入本机历史：
+
+```bash
+mkdir -p data
+cp -r ~/.tradingagents/logs/. data/logs/
+```
+
+同一镜像跑 CLI（交互式命令加 `-it`）：
+
+```bash
+docker compose run --rm web tradingagents --help
+docker compose run --rm web tradingagents deep 600519 2026-11-25
+```
+
+改端口两种方式：在 `.env` 设 `STREAMLIT_SERVER_PORT=8599`，Compose 会同步容器端口、宿主机映射与健康检查；或只改 `ports` 左侧（如 `"8601:8501"`，容器内仍是 8501）。
+
+容器内用户是 uid 1000。若宿主机当前用户不是 1000，`./data` 可能不可写：
+
+```bash
+sudo chown -R 1000:1000 data
+```
+
+国内网络构建慢或失败时，覆盖构建源（apt 参数填镜像主机名）：
+
+```bash
+PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
+APT_MIRROR=mirrors.tuna.tsinghua.edu.cn \
+docker compose build
+```
+
+说明：
+
+- 镜像不含 `.env`；配置只通过 `env_file` 在运行时注入。
+- 服务监听 `0.0.0.0:8501` 且无鉴权，仅限本机/内网使用；公网部署需自行加反向代理与认证。
+- 健康检查走 `/_stcore/health`，`docker compose ps` 显示 `healthy` 即可用。
+
 ## 自选股
 
 `watchlist.yaml`：
