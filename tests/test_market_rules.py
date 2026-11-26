@@ -4,8 +4,15 @@ from dataclasses import replace
 
 import pytest
 
-from market.fetch import IndexQuote, IndexSpec
-from market.rules import Trend, broken_rate, build_index_quote, classify_trend
+from market.fetch import IndexQuote, IndexSpec, Sentiment
+from market.rules import (
+    Flag,
+    Trend,
+    broken_rate,
+    build_index_quote,
+    classify_trend,
+    compute_flags,
+)
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
 SPEC = IndexSpec(name="上证", code="sh000001", exchange="SH")
@@ -180,3 +187,93 @@ def test_classify_trend_undetermined(missing):
     quote = replace(_hs300(), **{missing: None})
 
     assert classify_trend(quote) == Trend("无法判定", None, None, None)
+
+
+def _quote(name="上证", code="sh000001", return_20d=None, volume_ratio=None) -> IndexQuote:
+    return IndexQuote(
+        name=name,
+        code=code,
+        return_20d=return_20d,
+        volume_ratio=volume_ratio,
+    )
+
+
+@pytest.mark.parametrize("ratio", [1.19, 0.81])
+def test_compute_flags_volume_inside_band_is_silent(ratio):
+    indices = [_quote(name="沪深300", code="sh000300", volume_ratio=ratio)]
+
+    assert compute_flags(indices, None) == []
+
+
+def test_compute_flags_volume_up_at_boundary():
+    indices = [_quote(name="沪深300", code="sh000300", volume_ratio=1.2)]
+
+    assert compute_flags(indices, None) == [
+        Flag("volume_up", "放量", "沪深300 20 日量能倍数 1.2")
+    ]
+
+
+def test_compute_flags_volume_down_at_boundary():
+    indices = [_quote(name="沪深300", code="sh000300", volume_ratio=0.8)]
+
+    assert compute_flags(indices, None) == [
+        Flag("volume_down", "缩量", "沪深300 20 日量能倍数 0.8")
+    ]
+
+
+def test_compute_flags_volume_ignores_non_hs300_quote():
+    indices = [_quote(name="上证", code="sh000001", volume_ratio=1.5)]
+
+    assert compute_flags(indices, None) == []
+
+
+def test_compute_flags_limit_ratio_counts():
+    sentiment = Sentiment(limit_up=50, limit_down=3)
+
+    flags = compute_flags([], sentiment)
+
+    assert flags == [Flag("limit_ratio", "涨停/跌停", "涨停 50 / 跌停 3")]
+
+
+@pytest.mark.parametrize("missing", ["limit_up", "limit_down"])
+def test_compute_flags_limit_ratio_missing_count_skips(missing):
+    sentiment = Sentiment(**{"limit_up": 50, "limit_down": 3, missing: None})
+
+    assert compute_flags([], sentiment) == []
+
+
+def test_compute_flags_broken_rate_skips_none():
+    sentiment = Sentiment(broken_rate=None)
+
+    assert compute_flags([], sentiment) == []
+
+
+def test_compute_flags_broken_rate_value():
+    sentiment = Sentiment(broken_rate=30.0)
+
+    assert compute_flags([], sentiment) == [Flag("broken_rate", "炸板率", "30.0%")]
+
+
+def test_compute_flags_dispersion_names_extremes():
+    indices = [
+        _quote(name="深成", code="sz399001", return_20d=-2.0),
+        _quote(name="上证", code="sh000001", return_20d=0.0),
+        _quote(name="创业板", code="sz399006", return_20d=3.5),
+    ]
+
+    assert compute_flags(indices, None) == [
+        Flag(
+            "dispersion",
+            "指数 20 日分化",
+            "极差 5.5 个百分点（最强 创业板 +3.5%，最弱 深成 -2.0%）",
+        )
+    ]
+
+
+def test_compute_flags_dispersion_needs_two_returns():
+    indices = [
+        _quote(name="深成", code="sz399001", return_20d=-2.0),
+        _quote(name="上证", code="sh000001", return_20d=None),
+    ]
+
+    assert compute_flags(indices, None) == []

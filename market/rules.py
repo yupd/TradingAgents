@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from market.fetch import IndexQuote, IndexSpec
+from market.fetch import IndexQuote, IndexSpec, Sentiment
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
 
@@ -37,6 +37,52 @@ def classify_trend(quote: IndexQuote) -> Trend:
     else:
         level = "震荡"
     return Trend(level, close_above_ma20, ma20_above_ma60, return_20d_positive)
+
+
+@dataclass(frozen=True)
+class Flag:
+    kind: str
+    label: str
+    detail: str
+
+
+def compute_flags(indices: list[IndexQuote], sentiment: Sentiment | None) -> list[Flag]:
+    """Deterministic flags in fixed order: volume, limit ratio, broken rate, 20-day dispersion."""
+    flags: list[Flag] = []
+    hs300 = next((quote for quote in indices if quote.code == "sh000300"), None)
+    if hs300 is not None and hs300.volume_ratio is not None:
+        detail = f"沪深300 20 日量能倍数 {hs300.volume_ratio:.1f}"
+        if hs300.volume_ratio >= 1.2:
+            flags.append(Flag("volume_up", "放量", detail))
+        elif hs300.volume_ratio <= 0.8:
+            flags.append(Flag("volume_down", "缩量", detail))
+    if sentiment is not None:
+        if sentiment.limit_up is not None and sentiment.limit_down is not None:
+            flags.append(
+                Flag(
+                    "limit_ratio",
+                    "涨停/跌停",
+                    f"涨停 {sentiment.limit_up} / 跌停 {sentiment.limit_down}",
+                )
+            )
+        if sentiment.broken_rate is not None:
+            flags.append(Flag("broken_rate", "炸板率", f"{sentiment.broken_rate:.1f}%"))
+    available = [
+        (quote.return_20d, quote.name) for quote in indices if quote.return_20d is not None
+    ]
+    if len(available) >= 2:
+        strongest = max(available)
+        weakest = min(available)
+        spread = strongest[0] - weakest[0]
+        flags.append(
+            Flag(
+                "dispersion",
+                "指数 20 日分化",
+                f"极差 {spread:.1f} 个百分点（最强 {strongest[1]} {strongest[0]:+.1f}%，"
+                f"最弱 {weakest[1]} {weakest[0]:+.1f}%）",
+            )
+        )
+    return flags
 
 
 def broken_rate(limit_up: int | None, broken: int | None) -> float | None:
