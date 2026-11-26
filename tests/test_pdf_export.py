@@ -17,3 +17,17 @@ def test_markdown_uses_this_forks_keys_and_has_no_missing_data_warning():
     assert "评级: 买入" in md
     assert "数据缺失" not in md
     assert "缺" not in md
+
+
+def test_noto_is_preferred_before_wqy_for_glyph_coverage():
+    from pathlib import Path
+
+    from web.pdf_export import _FONT_CANDIDATES
+
+    first = Path(_FONT_CANDIDATES[0][0]).name
+    assert "NotoSansCJK" in first
+
+    from web.pdf_export import _FONT_NAME_CANDIDATES
+
+    names = [name for name, _ in _FONT_NAME_CANDIDATES]
+    assert names.index("Noto Sans CJK SC") < names.index("WenQuanYi Zen Hei")

@@ -40,14 +40,6 @@ _PDF_BOLD_FONT_ENV = "TRADINGAGENTS_PDF_BOLD_FONT"
 
 _FONT_CANDIDATES = [
     (
-        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
-    ),
-    (
-        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-    ),
-    (
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
         "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
     ),
@@ -62,6 +54,14 @@ _FONT_CANDIDATES = [
     (
         "/usr/share/fonts/truetype/noto/NotoSansSC-Regular.ttf",
         "/usr/share/fonts/truetype/noto/NotoSansSC-Bold.ttf",
+    ),
+    (
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    ),
+    (
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
     ),
     (
         "/usr/share/fonts/truetype/droid/DroidSansFallbackFull.ttf",
@@ -86,12 +86,12 @@ _FONT_CANDIDATES = [
 ]
 
 _FONT_NAME_CANDIDATES = [
-    ("WenQuanYi Micro Hei", "Regular"),
-    ("WenQuanYi Zen Hei", "Regular"),
     ("Noto Sans CJK SC", "Regular"),
     ("Noto Sans CJK SC", "Bold"),
     ("Noto Sans SC", "Regular"),
     ("Noto Sans SC", "Bold"),
+    ("WenQuanYi Micro Hei", "Regular"),
+    ("WenQuanYi Zen Hei", "Regular"),
     ("Source Han Sans SC", "Regular"),
     ("Source Han Sans SC", "Bold"),
 ]
