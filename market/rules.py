@@ -5,10 +5,14 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import TYPE_CHECKING
 
 from market.fetch import IndexQuote, IndexSpec, Industries, NewsResult, Sentiment, Turnover
 from tradingagents.dataflows.vendors.a_share.calendar import previous_trade_date
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
+
+if TYPE_CHECKING:
+    from market.fundamentals import Fundamentals
 
 
 @dataclass(frozen=True)
@@ -119,12 +123,56 @@ def broken_rate(limit_up: int | None, broken: int | None) -> float | None:
     return broken / total * 100
 
 
+def _fundamental_gaps(fundamentals: Fundamentals) -> list[str]:
+    """One line per missing fundamentals item; history mode adds none."""
+    gaps: list[str] = []
+    macro = fundamentals.macro
+    if macro is None or not macro.items:
+        gaps.append("macro: 宏观数据不可用")
+    else:
+        gaps.extend(
+            f"macro: {item.name} 不可用" for item in macro.items if item.value is None
+        )
+
+    valuation = fundamentals.valuation
+    if valuation is None:
+        gaps.append("valuation: 估值数据不可用")
+    else:
+        if valuation.pe_ttm is None:
+            gaps.append("valuation: 第三方估值不可用")
+        if all(
+            value is None
+            for value in (
+                valuation.official_pe1,
+                valuation.official_pe2,
+                valuation.official_div1,
+                valuation.official_div2,
+            )
+        ):
+            gaps.append("valuation: 中证官方估值不可用")
+
+    margin = fundamentals.margin
+    if margin is None or (margin.total is None and margin.sh is None and margin.sz is None):
+        gaps.append("margin: 两融数据不可用")
+    else:
+        if margin.sh is None:
+            gaps.append("margin: 沪市两融不可用")
+        if margin.sz is None:
+            gaps.append("margin: 深市两融不可用")
+
+    earnings = fundamentals.earnings
+    if earnings is None or earnings.net_profit_yoy is None:
+        gaps.append("earnings: 盈利数据不可用")
+    return gaps
+
+
 def collect_gaps(
     indices: list[IndexQuote],
     turnover: Turnover | None,
     sentiment: Sentiment | None,
     industries: Industries | None,
     news: NewsResult | None,
+    fundamentals: Fundamentals | None = None,
     extra: list[str] | None = None,
 ) -> list[str]:
     """Every unavailable item as one line, in fixed order, de-duplicated."""
@@ -154,6 +202,8 @@ def collect_gaps(
         gaps.append(f"industries: {industries.note}")
     if news is not None and news.gap:
         gaps.append(news.gap)
+    if fundamentals is not None and not fundamentals.unavailable:
+        gaps.extend(_fundamental_gaps(fundamentals))
     gaps.extend(extra or [])
     return list(dict.fromkeys(gaps))
 

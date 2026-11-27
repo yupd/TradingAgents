@@ -18,6 +18,9 @@ _HEADINGS = (
     "数据缺口",
 )
 
+_FUNDAMENTAL_HEADINGS = ("宏观基本面", "估值水平", "资金面", "盈利概览")
+_HISTORY = "历史模式不可用"
+
 _INDEX_COLUMNS = (
     "指数",
     "收盘",
@@ -177,8 +180,113 @@ def _gaps(gaps: list[str]) -> str:
     return "\n".join(f"- {gap}" for gap in gaps) if gaps else "无"
 
 
+def _yi(value: float | None, signed: bool = False) -> str:
+    if value is None:
+        return _NA
+    return f"{value:+.2f} 亿元" if signed else f"{value:.2f} 亿元"
+
+
+def _macro(fundamentals) -> str:
+    macro = fundamentals.macro
+    if macro is None or not macro.items:
+        return _UNAVAILABLE
+    rows = [
+        [
+            item.name,
+            _num(item.value),
+            item.unit or _NA,
+            item.period or _NA,
+            item.source or _NA,
+        ]
+        for item in macro.items
+    ]
+    lines = [_table(("指标", "数值", "单位", "统计期", "来源"), rows)]
+    notes = [f"- {item.name}：{item.note}" for item in macro.items if item.note]
+    if notes:
+        lines += ["", *notes]
+    return "\n".join(lines)
+
+
+def _valuation(fundamentals) -> str:
+    valuation = fundamentals.valuation
+    if valuation is None:
+        return _UNAVAILABLE
+    percentile = _rate(valuation.pe_percentile)
+    if valuation.percentile_window is not None:
+        percentile += f"（近 {valuation.percentile_window} 个月）"
+    lines = [
+        f"第三方 PE(TTM)：{_num(valuation.pe_ttm)}｜日期：{valuation.pe_date or _NA}",
+        f"PE 分位：{percentile}",
+        f"官方市盈率1：{_num(valuation.official_pe1)}",
+        f"官方市盈率2：{_num(valuation.official_pe2)}",
+        f"官方股息率1：{_num(valuation.official_div1, '{:.2f}%')}",
+        f"官方股息率2：{_num(valuation.official_div2, '{:.2f}%')}",
+        f"官方日期：{valuation.official_date or _NA}",
+        f"来源：{valuation.source or _NA}",
+        "口径以中证指数为准",
+    ]
+    if valuation.note:
+        lines.append(f"说明：{valuation.note}")
+    return "\n".join(lines)
+
+
+def _margin(fundamentals) -> str:
+    margin = fundamentals.margin
+    if margin is None:
+        return _UNAVAILABLE
+    lines = [
+        f"沪市：{_yi(margin.sh)}",
+        f"深市：{_yi(margin.sz)}",
+        f"合计：{_yi(margin.total)}",
+        f"5 日变化：{_yi(margin.change_5d, signed=True)}",
+        f"As of：{margin.as_of or _NA}",
+        f"来源：{margin.source or _NA}",
+    ]
+    if margin.note:
+        lines.append(f"说明：{margin.note}")
+    return "\n".join(lines)
+
+
+def _earnings(fundamentals) -> str:
+    earnings = fundamentals.earnings
+    # A table without a usable profit YoY is not an earnings block.
+    if earnings is None or earnings.net_profit_yoy is None:
+        return _UNAVAILABLE
+    if earnings.coverage is None:
+        coverage = _NA
+    elif earnings.covered is not None and earnings.total is not None:
+        coverage = (
+            f"{earnings.covered}/{earnings.total}（{earnings.coverage * 100:.1f}%）"
+        )
+    else:
+        coverage = f"{earnings.coverage * 100:.1f}%"
+    if earnings.coverage_low:
+        coverage = f"{coverage}，覆盖不足"
+    lines = [
+        f"报告期：{earnings.period or _NA}",
+        f"净利润同比：{_pct(earnings.net_profit_yoy)}",
+        f"营收同比：{_pct(earnings.revenue_yoy)}",
+        f"覆盖：{coverage}",
+        f"来源：{earnings.source or _NA}",
+    ]
+    if earnings.note:
+        lines.append(f"说明：{earnings.note}")
+    return "\n".join(lines)
+
+
+def _fundamental_sections(fundamentals) -> dict[str, str]:
+    if fundamentals.unavailable:
+        return {heading: _HISTORY for heading in _FUNDAMENTAL_HEADINGS}
+    return {
+        "宏观基本面": _macro(fundamentals),
+        "估值水平": _valuation(fundamentals),
+        "资金面": _margin(fundamentals),
+        "盈利概览": _earnings(fundamentals),
+    }
+
+
 def render_market(facts: MarketFacts, summary: Summary) -> str:
-    """The seven-section Markdown report; pure and I/O-free."""
+    """The seven-section Markdown report, plus four fundamentals sections when enabled."""
     sections = {
         "结论": _conclusion(facts, summary),
         "指数趋势": _indices(facts),
@@ -188,10 +296,15 @@ def render_market(facts: MarketFacts, summary: Summary) -> str:
         "新闻与政策": _news(facts.news),
         "数据缺口": _gaps(facts.gaps),
     }
+    headings = list(_HEADINGS)
+    if facts.fundamentals is not None:
+        sections.update(_fundamental_sections(facts.fundamentals))
+        gap_index = headings.index("数据缺口")
+        headings[gap_index:gap_index] = list(_FUNDAMENTAL_HEADINGS)
     lines = [
         f"# A 股大盘复盘 {facts.trade_date}",
         f"行情截止：{facts.trade_date} 15:00；行业/新闻为运行时刻快照",
     ]
-    for heading in _HEADINGS:
+    for heading in headings:
         lines += ["", f"## {heading}", "", sections[heading]]
     return "\n".join(lines).rstrip() + "\n"

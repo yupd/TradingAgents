@@ -291,7 +291,9 @@ def fetch_valuation(trade_date: str) -> Valuation:
             valuation.official_div2,
             valuation.official_date,
         ) = official
-        sources.append(OFFICIAL_SOURCE)
+        # A frame with none of the four value columns is not a usable source.
+        if any(value is not None for value in official[:4]):
+            sources.append(OFFICIAL_SOURCE)
     valuation.source = " / ".join(sources) if sources else None
     return valuation
 
@@ -363,11 +365,14 @@ def fetch_margin(trade_date: str) -> Margin:
     import akshare as ak
 
     series = []
-    for name, fetch in (
-        ("沪市", ak.stock_margin_sse_js),
-        ("深市", ak.stock_margin_szse_js),
+    for name, attribute in (
+        ("沪市", "stock_margin_sse_js"),
+        ("深市", "stock_margin_szse_js"),
     ):
         try:
+            fetch = getattr(ak, attribute, None)
+            if fetch is None:
+                raise AttributeError(f"akshare 缺少 {attribute}")
             series.append(_margin_series(fetch, trade_date))
         except Exception:
             logger.warning("两融取数失败：%s", name, exc_info=True)
@@ -436,3 +441,22 @@ def fetch_earnings(trade_date: str) -> Earnings | None:
         logger.warning("业绩报表取数失败", exc_info=True)
         return None
     return _parse_earnings(frame, trade_date, period)
+
+
+def fetch_fundamentals(trade_date: str, is_latest: bool) -> Fundamentals:
+    """The four fundamentals blocks; history gets no request and a fixed reason."""
+    if not is_latest:
+        return Fundamentals(unavailable="历史模式不可用")
+    blocks = {}
+    for name, fetch, args in (
+        ("macro", fetch_macro, ()),
+        ("valuation", fetch_valuation, (trade_date,)),
+        ("margin", fetch_margin, (trade_date,)),
+        ("earnings", fetch_earnings, (trade_date,)),
+    ):
+        try:
+            blocks[name] = fetch(*args)
+        except Exception:
+            logger.warning("%s 取数失败", name, exc_info=True)
+            blocks[name] = None
+    return Fundamentals(**blocks)

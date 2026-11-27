@@ -7,11 +7,15 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from tradingagents.dataflows.vendors.a_share import akshare_patch  # noqa: F401  (installs the Eastmoney wrapper)
 from tradingagents.dataflows.vendors.a_share import http
 from tradingagents.dataflows.vendors.a_share.news import get_global_news
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
+
+if TYPE_CHECKING:
+    from market.fundamentals import Fundamentals
 
 logger = logging.getLogger(__name__)
 
@@ -468,3 +472,4 @@ class MarketFacts:
     gaps: list[str] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
     flags: list = field(default_factory=list)
+    fundamentals: "Fundamentals | None" = None
