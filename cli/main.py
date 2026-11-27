@@ -123,10 +123,13 @@ def market(
     date: str = typer.Option(
         None, "--date", help="Trade date, YYYY-MM-DD; defaults to the latest session"
     ),
+    fundamentals: bool = typer.Option(
+        False, "--fundamentals", help="Add macro, valuation, margin and earnings sections"
+    ),
 ):
     """Write the daily A-share market trend report."""
     try:
-        path = run_market(date)
+        path = run_market(date, fundamentals=fundamentals)
     except MarketDataUnavailable as exc:
         console.print(f"[red]{escape(str(exc))}[/red]")
         raise typer.Exit(code=1) from None

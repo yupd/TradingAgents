@@ -13,6 +13,7 @@ def test_empty_market_facts_has_no_optional_groups():
     assert facts.news == []
     assert facts.gaps == []
     assert facts.sources == []
+    assert facts.fundamentals is None
 
 
 def test_index_quote_requires_identity_only():

@@ -112,6 +112,117 @@ def _news(news: list[MarketNews]) -> str:
     )
 
 
+def _macro_block(macro) -> str:
+    if macro is None or not macro.items:
+        return _NA
+    if all(item.value is None for item in macro.items):
+        return _NA
+    lines = []
+    for item in macro.items:
+        value = _fmt(item.value)
+        if item.value is not None and item.unit:
+            value = f"{value} {item.unit}"
+        line = (
+            f"- {item.name}：{value}，统计期 {item.period or _NA}，"
+            f"来源 {item.source or _NA}"
+        )
+        if item.note:
+            line = f"{line}，{item.note}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _valuation_block(valuation) -> str:
+    if valuation is None:
+        return _NA
+    if all(
+        value is None
+        for value in (
+            valuation.pe_ttm,
+            valuation.pe_percentile,
+            valuation.official_pe1,
+            valuation.official_pe2,
+            valuation.official_div1,
+            valuation.official_div2,
+        )
+    ):
+        return _NA
+    window = (
+        f"近 {valuation.percentile_window} 个月"
+        if valuation.percentile_window is not None
+        else _NA
+    )
+    lines = [
+        f"第三方 PE(TTM)：{_fmt(valuation.pe_ttm)}（{valuation.pe_date or _NA}）",
+        f"PE 分位：{_rate(valuation.pe_percentile)}（{window}）",
+        f"官方市盈率1：{_fmt(valuation.official_pe1)}",
+        f"官方市盈率2：{_fmt(valuation.official_pe2)}",
+        f"官方股息率1：{_fmt(valuation.official_div1, '{:.2f}%')}",
+        f"官方股息率2：{_fmt(valuation.official_div2, '{:.2f}%')}",
+        f"官方日期：{valuation.official_date or _NA}",
+        f"来源：{valuation.source or _NA}",
+    ]
+    if any(
+        value is not None
+        for value in (
+            valuation.official_pe1,
+            valuation.official_pe2,
+            valuation.official_div1,
+            valuation.official_div2,
+        )
+    ):
+        lines.append("口径以中证指数为准")
+    return "\n".join(lines)
+
+
+def _margin_block(margin) -> str:
+    if margin is None:
+        return _NA
+    if all(
+        value is None
+        for value in (margin.sh, margin.sz, margin.total, margin.change_5d)
+    ):
+        return _NA
+    lines = [
+        f"沪市：{_fmt(margin.sh, _YI)}",
+        f"深市：{_fmt(margin.sz, _YI)}",
+        f"合计：{_fmt(margin.total, _YI)}",
+        f"5 日变化：{_fmt(margin.change_5d, '{:+.2f} 亿元')}",
+        f"As of：{margin.as_of or _NA}",
+        f"来源：{margin.source or _NA}",
+    ]
+    if margin.note:
+        lines.append(f"说明：{margin.note}")
+    return "\n".join(lines)
+
+
+def _earnings_block(earnings) -> str:
+    # A table without a usable profit YoY is not an earnings block.
+    if earnings is None or earnings.net_profit_yoy is None:
+        return _NA
+    if earnings.coverage is None:
+        coverage = _NA
+    elif earnings.covered is not None and earnings.total is not None:
+        coverage = (
+            f"{earnings.covered}/{earnings.total}（{earnings.coverage * 100:.1f}%）"
+        )
+    else:
+        coverage = f"{earnings.coverage * 100:.1f}%"
+    if earnings.coverage_low:
+        coverage = f"{coverage} 覆盖不足"
+    lines = [
+        f"报告期：{earnings.period or _NA}",
+        f"公告截止日：{earnings.announcement_cutoff or _NA}",
+        f"净利润同比：{_fmt(earnings.net_profit_yoy, _PCT)}",
+        f"营收同比：{_fmt(earnings.revenue_yoy, _PCT)}",
+        f"覆盖（接口返回样本内）：{coverage}",
+        f"来源：{earnings.source or _NA}",
+    ]
+    if earnings.note:
+        lines.append(f"说明：{earnings.note}")
+    return "\n".join(lines)
+
+
 def facts_block(facts: MarketFacts) -> str:
     """The fact block handed to the model; pure and I/O-free."""
     sections = [
@@ -122,6 +233,19 @@ def facts_block(facts: MarketFacts) -> str:
         ("行业", _industries(facts.industries)),
         ("新闻", _news(facts.news)),
     ]
+    if facts.fundamentals is not None:
+        fundamentals = facts.fundamentals
+        if fundamentals.unavailable:
+            sections.append(("基本面", fundamentals.unavailable))
+        else:
+            sections.extend(
+                [
+                    ("宏观基本面", _macro_block(fundamentals.macro)),
+                    ("估值水平", _valuation_block(fundamentals.valuation)),
+                    ("资金面", _margin_block(fundamentals.margin)),
+                    ("盈利概览", _earnings_block(fundamentals.earnings)),
+                ]
+            )
     lines = [f"# 大盘事实 {facts.trade_date}"]
     lines.extend(f"## {title}\n{body}" for title, body in sections)
     return "\n\n".join(lines)

@@ -45,7 +45,7 @@ def test_market_help_shows_date_option():
 @pytest.mark.unit
 def test_market_command_prints_written_path(monkeypatch, tmp_path):
     target = tmp_path / "2026-11-26.md"
-    monkeypatch.setattr(m, "run_market", lambda date: target)
+    monkeypatch.setattr(m, "run_market", lambda date, fundamentals=False: target)
     result = CliRunner().invoke(m.app, ["market", "--date", "2026-11-26"])
     assert result.exit_code == 0
     assert str(target) in result.output
@@ -53,7 +53,7 @@ def test_market_command_prints_written_path(monkeypatch, tmp_path):
 
 @pytest.mark.unit
 def test_market_command_rejects_bad_date(monkeypatch):
-    def refuse(date):
+    def refuse(date, fundamentals=False):
         raise ValueError("time data 'x' does not match format '%Y-%m-%d'")
 
     monkeypatch.setattr(m, "run_market", refuse)

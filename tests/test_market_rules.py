@@ -5,6 +5,14 @@ from dataclasses import replace
 import pytest
 
 from market.fetch import IndexQuote, IndexSpec, Industries, NewsResult, Sentiment, Turnover
+from market.fundamentals import (
+    Earnings,
+    Fundamentals,
+    MacroBlock,
+    MacroItem,
+    Margin,
+    Valuation,
+)
 from market.rules import (
     Flag,
     Trend,
@@ -245,6 +253,120 @@ def test_collect_gaps_whole_source_missing():
         "turnover: 成交额不可用",
         "sentiment: 情绪数据不可用",
         "industries: 行业榜不可用",
+    ]
+
+
+def _gap_args(fundamentals=None):
+    indices, turnover, sentiment, industries, news = _full_gap_inputs()
+    return dict(
+        indices=indices,
+        turnover=turnover,
+        sentiment=sentiment,
+        industries=industries,
+        news=news,
+        fundamentals=fundamentals,
+    )
+
+
+def test_collect_gaps_without_fundamentals_is_unchanged():
+    assert collect_gaps(**_gap_args()) == []
+
+
+def test_collect_gaps_fundamentals_history_mode_adds_nothing():
+    factors = Fundamentals(unavailable="历史模式不可用")
+
+    assert collect_gaps(**_gap_args(factors)) == []
+
+
+def test_collect_gaps_lists_missing_fundamentals_blocks():
+    factors = Fundamentals()
+
+    assert collect_gaps(**_gap_args(factors)) == [
+        "macro: 宏观数据不可用",
+        "valuation: 估值数据不可用",
+        "margin: 两融数据不可用",
+        "earnings: 盈利数据不可用",
+    ]
+
+
+def test_collect_gaps_lists_missing_macro_items_and_valuation_sources():
+    factors = Fundamentals(
+        macro=MacroBlock(
+            items=[
+                MacroItem("CPI", 0.3, "%", "2026年10月", "源"),
+                MacroItem("PPI", None, "%", None, "源"),
+            ]
+        ),
+        valuation=Valuation(pe_ttm=None),
+        margin=Margin(sh=100.0, total=None),
+        earnings=Earnings(net_profit_yoy=None),
+    )
+
+    assert collect_gaps(**_gap_args(factors)) == [
+        "macro: PPI 不可用",
+        "valuation: 第三方估值不可用",
+        "valuation: 中证官方估值不可用",
+        "margin: 深市两融不可用",
+        "earnings: 盈利数据不可用",
+    ]
+
+
+def _present_fundamentals(**overrides):
+    """Every block usable, so only the overridden block contributes gaps."""
+    blocks = dict(
+        macro=MacroBlock(
+            items=[MacroItem("CPI", 0.3, "%", "2026年10月", "源")]
+        ),
+        valuation=Valuation(
+            pe_ttm=12.6,
+            pe_percentile=45.2,
+            official_pe1=13.6,
+            official_pe2=14.6,
+            official_div1=2.6,
+            official_div2=2.5,
+        ),
+        margin=Margin(sh=100.0, sz=50.0, total=150.0, change_5d=10.0),
+        earnings=Earnings(net_profit_yoy=5.0, revenue_yoy=3.0, coverage=0.9),
+    )
+    blocks.update(overrides)
+    return Fundamentals(**blocks)
+
+
+def test_collect_gaps_lists_partial_official_valuation_fields():
+    factors = _present_fundamentals(
+        valuation=Valuation(
+            pe_ttm=12.6,
+            pe_percentile=45.2,
+            official_pe1=13.6,
+            official_pe2=None,
+            official_div1=None,
+            official_div2=2.5,
+        )
+    )
+
+    assert collect_gaps(**_gap_args(factors)) == [
+        "valuation: 中证官方估值部分缺失（市盈率2、股息率1）",
+    ]
+
+
+def test_collect_gaps_reports_missing_five_day_margin_change():
+    factors = _present_fundamentals(
+        margin=Margin(sh=100.0, sz=50.0, total=150.0, change_5d=None)
+    )
+
+    assert collect_gaps(**_gap_args(factors)) == [
+        "margin: 5 日变化不可用（共同日期不足 6 天）",
+    ]
+
+
+def test_collect_gaps_lists_missing_earnings_subfields():
+    factors = _present_fundamentals(
+        earnings=Earnings(net_profit_yoy=5.0, revenue_yoy=None, coverage=None)
+    )
+
+    assert collect_gaps(**_gap_args(factors)) == [
+        "earnings: 营收同比不可用",
+        "earnings: 覆盖率不可用",
     ]
 
 

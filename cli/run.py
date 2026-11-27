@@ -494,7 +494,7 @@ def run_brief(trade_date: str | None = None, watchlist: str = "watchlist.yaml"):
     return render_brief(day, entries, Path("reports") / "brief")
 
 
-def run_market(date: str | None = None) -> Path:
+def run_market(date: str | None = None, fundamentals: bool = False) -> Path:
     """Collect market-wide facts, summarize them and write one Markdown report."""
     from market.fetch import (
         MarketFacts,
@@ -537,6 +537,15 @@ def run_market(date: str | None = None) -> Path:
         and not news_result.items
     ):
         raise MarketDataUnavailable("没有可用的市场数据，未生成报告")
+    fundamental_facts = None
+    if fundamentals:
+        from market.fundamentals import Fundamentals, fetch_fundamentals
+
+        latest = resolve_trade_date(None)[0]
+        if day == latest:
+            fundamental_facts = fetch_fundamentals(day, True)
+        else:
+            fundamental_facts = Fundamentals(unavailable="历史模式不可用")
     benchmark = next((quote for quote in indices if quote.code == "sh000300"), None)
     trend = classify_trend(benchmark) if benchmark is not None else None
     flags = compute_flags(indices, sentiment)
@@ -546,6 +555,7 @@ def run_market(date: str | None = None) -> Path:
         sentiment,
         industries,
         news_result,
+        fundamentals=fundamental_facts,
         extra=[gap for gap in (calendar_gap, industries_gap) if gap],
     )
     facts = MarketFacts(
@@ -561,6 +571,7 @@ def run_market(date: str | None = None) -> Path:
         flags=flags,
         gaps=gaps,
         sources=list(dict.fromkeys(quote.source for quote in indices if quote.source)),
+        fundamentals=fundamental_facts,
     )
     try:
         llm = create_tier_client(dict(DEFAULT_CONFIG), "quick").get_llm()

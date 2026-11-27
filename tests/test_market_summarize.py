@@ -6,6 +6,14 @@ from market.fetch import (
     Sentiment,
     Turnover,
 )
+from market.fundamentals import (
+    Earnings,
+    Fundamentals,
+    MacroBlock,
+    MacroItem,
+    Margin,
+    Valuation,
+)
 from market.rules import Trend
 from market.summarize import (
     Summary,
@@ -87,6 +95,120 @@ def test_partial_data_has_no_dangling_units():
     assert "涨跌 不可用" in block
     assert "不可用 亿元" not in block
     assert "## 成交额\n不可用" in block
+
+
+def _fundamentals() -> Fundamentals:
+    return Fundamentals(
+        macro=MacroBlock(
+            items=[
+                MacroItem("CPI", 0.3, "%", "2026年10月", "akshare 宏观接口"),
+                MacroItem("PPI", -2.1, "%", "2026年10月", "akshare 宏观接口"),
+                MacroItem("PMI", 49.5, "指数", "2026年10月", "akshare 宏观接口"),
+                MacroItem("社零", 2.9, "%", "2026年10月", "akshare 宏观接口"),
+                MacroItem("固定资产投资", 10.0, "%", "2026年10月", "akshare 宏观接口"),
+                MacroItem("进出口", 5.4, "%", "2026年10月", "akshare 宏观接口"),
+            ]
+        ),
+        valuation=Valuation(
+            pe_ttm=12.6,
+            pe_percentile=45.2,
+            percentile_window=120,
+            pe_date="2026-11-01",
+            official_pe1=13.61,
+            official_pe2=14.69,
+            official_div1=2.6,
+            official_div2=2.5,
+            official_date="2026-11-26",
+            source="乐咕乐股（akshare） / 中证指数（akshare）",
+        ),
+        margin=Margin(
+            sh=100.0,
+            sz=50.0,
+            total=150.0,
+            change_5d=10.0,
+            as_of="2026-11-25",
+            source="上交所/深交所（akshare）",
+        ),
+        earnings=Earnings(
+            period="2026-09-30",
+            announcement_cutoff="2026-11-26",
+            net_profit_yoy=100.0,
+            revenue_yoy=25.0,
+            coverage=1 / 3,
+            covered=1,
+            total=3,
+            coverage_low=True,
+            source="东财业绩报表（akshare）",
+            note="按个股财报加权聚合，非官方指数口径",
+        ),
+    )
+
+
+def test_facts_block_without_fundamentals_has_no_fundamental_groups():
+    block = facts_block(_full_facts())
+
+    for heading in ("## 宏观基本面", "## 估值水平", "## 资金面", "## 盈利概览", "## 基本面"):
+        assert heading not in block
+
+
+def test_facts_block_appends_four_fundamental_groups_with_numbers():
+    facts = _full_facts()
+    facts.fundamentals = _fundamentals()
+
+    block = facts_block(facts)
+
+    headings = ["## 宏观基本面", "## 估值水平", "## 资金面", "## 盈利概览"]
+    positions = [block.index(heading) for heading in headings]
+    assert positions == sorted(positions)
+    assert "0.30 %" in block
+    assert "统计期 2026年10月" in block
+    assert "第三方 PE(TTM)：12.60" in block
+    assert "PE 分位：45.2%（近 120 个月）" in block
+    assert "官方市盈率1：13.61" in block
+    assert "合计：150.00 亿元" in block
+    assert "5 日变化：+10.00 亿元" in block
+    assert "净利润同比：+100.00%" in block
+    assert "公告截止日：2026-11-26" in block
+    assert "覆盖（接口返回样本内）：1/3（33.3%） 覆盖不足" in block
+
+
+def test_facts_block_without_official_valuation_omits_the_caliber_note():
+    facts = _full_facts()
+    facts.fundamentals = Fundamentals(
+        valuation=Valuation(
+            pe_ttm=12.6, pe_percentile=50.0, percentile_window=36, pe_date="2026-11-01"
+        )
+    )
+
+    block = facts_block(facts)
+
+    assert "口径以中证指数为准" not in block
+    assert "官方日期：不可用" in block
+
+
+def test_facts_block_all_empty_fundamentals_render_unavailable():
+    facts = _full_facts()
+    facts.fundamentals = Fundamentals(
+        macro=MacroBlock(items=[MacroItem("CPI", None, "%", None, "源")]),
+        valuation=Valuation(source="源", pe_date="2026-11-01"),
+        margin=Margin(as_of="2026-11-25", source="源"),
+        earnings=None,
+    )
+
+    block = facts_block(facts)
+
+    for heading in ("宏观基本面", "估值水平", "资金面", "盈利概览"):
+        assert f"## {heading}\n不可用" in block
+
+
+def test_facts_block_history_mode_adds_one_reason_group():
+    facts = _full_facts()
+    facts.fundamentals = Fundamentals(unavailable="历史模式不可用")
+
+    block = facts_block(facts)
+
+    assert "## 基本面\n历史模式不可用" in block
+    assert "## 宏观基本面" not in block
 
 
 class _FakeLLM:
@@ -172,6 +294,28 @@ def test_missing_groups_render_unavailable_without_raising():
         "## 新闻",
     ):
         assert heading in block
+
+
+def test_summarize_with_fundamentals_still_calls_the_model_once():
+    facts = _full_facts()
+    facts.fundamentals = _fundamentals()
+    llm = _FakeLLM("解释文本")
+
+    summarize_market(facts, llm)
+
+    assert len(llm.calls) == 1
+    for heading in ("## 宏观基本面", "## 估值水平", "## 资金面", "## 盈利概览"):
+        assert heading in llm.calls[0]
+
+
+def test_safe_summarize_keeps_numbers_present_in_the_fundamentals_block():
+    facts = _full_facts()
+    facts.fundamentals = _fundamentals()
+
+    result = safe_summarize(facts, _FakeLLM("- 滚动 PE 为 12.60。"))
+
+    assert "12.60" in result.text
+    assert result.dropped == 0
 
 
 class _RaisingLLM:
