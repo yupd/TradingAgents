@@ -14,7 +14,7 @@ from market.rules import collect_gaps
 from market.summarize import Summary
 
 DAY = "2026-11-26"
-MACRO_SOURCE = "akshare 宏观接口（国家统计局口径）"
+MACRO_SOURCE = "akshare 宏观接口（东方财富/国家统计局口径）"
 PE_SOURCE = "乐咕乐股（akshare）"
 OFFICIAL_SOURCE = "中证指数（akshare）"
 
@@ -223,7 +223,7 @@ def test_earnings_renders_period_growth_coverage_and_low_coverage():
     assert f"公告截止日：{DAY}" in section
     assert "净利润同比：+100.00%" in section
     assert "营收同比：+25.00%" in section
-    assert "覆盖：1/3（33.3%），覆盖不足" in section
+    assert "覆盖（接口返回样本内）：1/3（33.3%），覆盖不足" in section
     assert "说明：按个股财报加权聚合，非官方指数口径" in section
 
 

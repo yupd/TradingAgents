@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
-SOURCE = "akshare 宏观接口（国家统计局口径）"
+SOURCE = "akshare 宏观接口（东方财富/国家统计局口径）"
 PE_SOURCE = "乐咕乐股（akshare）"
 OFFICIAL_SOURCE = "中证指数（akshare）"
 MARGIN_SOURCE = "上交所/深交所（akshare）"

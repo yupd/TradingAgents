@@ -140,16 +140,19 @@ def _fundamental_gaps(fundamentals: Fundamentals) -> list[str]:
     else:
         if valuation.pe_ttm is None:
             gaps.append("valuation: 第三方估值不可用")
-        if all(
-            value is None
-            for value in (
-                valuation.official_pe1,
-                valuation.official_pe2,
-                valuation.official_div1,
-                valuation.official_div2,
-            )
-        ):
+        official = {
+            "市盈率1": valuation.official_pe1,
+            "市盈率2": valuation.official_pe2,
+            "股息率1": valuation.official_div1,
+            "股息率2": valuation.official_div2,
+        }
+        missing = [name for name, value in official.items() if value is None]
+        if len(missing) == len(official):
             gaps.append("valuation: 中证官方估值不可用")
+        elif missing:
+            gaps.append(
+                f"valuation: 中证官方估值部分缺失（{'、'.join(missing)}）"
+            )
 
     margin = fundamentals.margin
     if margin is None or (margin.total is None and margin.sh is None and margin.sz is None):
@@ -159,10 +162,22 @@ def _fundamental_gaps(fundamentals: Fundamentals) -> list[str]:
             gaps.append("margin: 沪市两融不可用")
         if margin.sz is None:
             gaps.append("margin: 深市两融不可用")
+        if (
+            margin.sh is not None
+            and margin.sz is not None
+            and margin.total is not None
+            and margin.change_5d is None
+        ):
+            gaps.append("margin: 5 日变化不可用（共同日期不足 6 天）")
 
     earnings = fundamentals.earnings
     if earnings is None or earnings.net_profit_yoy is None:
         gaps.append("earnings: 盈利数据不可用")
+    else:
+        if earnings.revenue_yoy is None:
+            gaps.append("earnings: 营收同比不可用")
+        if earnings.coverage is None:
+            gaps.append("earnings: 覆盖率不可用")
     return gaps
 
 

@@ -311,6 +311,65 @@ def test_collect_gaps_lists_missing_macro_items_and_valuation_sources():
     ]
 
 
+def _present_fundamentals(**overrides):
+    """Every block usable, so only the overridden block contributes gaps."""
+    blocks = dict(
+        macro=MacroBlock(
+            items=[MacroItem("CPI", 0.3, "%", "2026年10月", "源")]
+        ),
+        valuation=Valuation(
+            pe_ttm=12.6,
+            pe_percentile=45.2,
+            official_pe1=13.6,
+            official_pe2=14.6,
+            official_div1=2.6,
+            official_div2=2.5,
+        ),
+        margin=Margin(sh=100.0, sz=50.0, total=150.0, change_5d=10.0),
+        earnings=Earnings(net_profit_yoy=5.0, revenue_yoy=3.0, coverage=0.9),
+    )
+    blocks.update(overrides)
+    return Fundamentals(**blocks)
+
+
+def test_collect_gaps_lists_partial_official_valuation_fields():
+    factors = _present_fundamentals(
+        valuation=Valuation(
+            pe_ttm=12.6,
+            pe_percentile=45.2,
+            official_pe1=13.6,
+            official_pe2=None,
+            official_div1=None,
+            official_div2=2.5,
+        )
+    )
+
+    assert collect_gaps(**_gap_args(factors)) == [
+        "valuation: 中证官方估值部分缺失（市盈率2、股息率1）",
+    ]
+
+
+def test_collect_gaps_reports_missing_five_day_margin_change():
+    factors = _present_fundamentals(
+        margin=Margin(sh=100.0, sz=50.0, total=150.0, change_5d=None)
+    )
+
+    assert collect_gaps(**_gap_args(factors)) == [
+        "margin: 5 日变化不可用（共同日期不足 6 天）",
+    ]
+
+
+def test_collect_gaps_lists_missing_earnings_subfields():
+    factors = _present_fundamentals(
+        earnings=Earnings(net_profit_yoy=5.0, revenue_yoy=None, coverage=None)
+    )
+
+    assert collect_gaps(**_gap_args(factors)) == [
+        "earnings: 营收同比不可用",
+        "earnings: 覆盖率不可用",
+    ]
+
+
 def _hs300(close=110.0, ma20=105.0, ma60=100.0, return_20d=5.0) -> IndexQuote:
     return IndexQuote(
         name="沪深300",

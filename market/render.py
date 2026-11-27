@@ -190,6 +190,9 @@ def _macro(fundamentals) -> str:
     macro = fundamentals.macro
     if macro is None or not macro.items:
         return _UNAVAILABLE
+    # A table whose every value is missing is not a macro block.
+    if all(item.value is None for item in macro.items):
+        return _UNAVAILABLE
     rows = [
         [
             item.name,
@@ -210,6 +213,19 @@ def _macro(fundamentals) -> str:
 def _valuation(fundamentals) -> str:
     valuation = fundamentals.valuation
     if valuation is None:
+        return _UNAVAILABLE
+    # Source/date alone do not make a valuation block; at least one value must exist.
+    if all(
+        value is None
+        for value in (
+            valuation.pe_ttm,
+            valuation.pe_percentile,
+            valuation.official_pe1,
+            valuation.official_pe2,
+            valuation.official_div1,
+            valuation.official_div2,
+        )
+    ):
         return _UNAVAILABLE
     percentile = _rate(valuation.pe_percentile)
     if valuation.percentile_window is not None:
@@ -242,6 +258,11 @@ def _valuation(fundamentals) -> str:
 def _margin(fundamentals) -> str:
     margin = fundamentals.margin
     if margin is None:
+        return _UNAVAILABLE
+    if all(
+        value is None
+        for value in (margin.sh, margin.sz, margin.total, margin.change_5d)
+    ):
         return _UNAVAILABLE
     lines = [
         f"沪市：{_yi(margin.sh)}",
@@ -276,7 +297,7 @@ def _earnings(fundamentals) -> str:
         f"公告截止日：{earnings.announcement_cutoff or _NA}",
         f"净利润同比：{_pct(earnings.net_profit_yoy)}",
         f"营收同比：{_pct(earnings.revenue_yoy)}",
-        f"覆盖：{coverage}",
+        f"覆盖（接口返回样本内）：{coverage}",
         f"来源：{earnings.source or _NA}",
     ]
     if earnings.note:

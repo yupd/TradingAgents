@@ -169,7 +169,7 @@ def test_facts_block_appends_four_fundamental_groups_with_numbers():
     assert "5 日变化：+10.00 亿元" in block
     assert "净利润同比：+100.00%" in block
     assert "公告截止日：2026-11-26" in block
-    assert "覆盖：1/3（33.3%） 覆盖不足" in block
+    assert "覆盖（接口返回样本内）：1/3（33.3%） 覆盖不足" in block
 
 
 def test_facts_block_without_official_valuation_omits_the_caliber_note():
@@ -184,6 +184,21 @@ def test_facts_block_without_official_valuation_omits_the_caliber_note():
 
     assert "口径以中证指数为准" not in block
     assert "官方日期：不可用" in block
+
+
+def test_facts_block_all_empty_fundamentals_render_unavailable():
+    facts = _full_facts()
+    facts.fundamentals = Fundamentals(
+        macro=MacroBlock(items=[MacroItem("CPI", None, "%", None, "源")]),
+        valuation=Valuation(source="源", pe_date="2026-11-01"),
+        margin=Margin(as_of="2026-11-25", source="源"),
+        earnings=None,
+    )
+
+    block = facts_block(facts)
+
+    for heading in ("宏观基本面", "估值水平", "资金面", "盈利概览"):
+        assert f"## {heading}\n不可用" in block
 
 
 def test_facts_block_history_mode_adds_one_reason_group():

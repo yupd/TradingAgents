@@ -2,7 +2,7 @@ import pandas as pd
 
 from market.fundamentals import MacroItem, _latest_row, fetch_macro
 
-SOURCE = "akshare 宏观接口（国家统计局口径）"
+SOURCE = "akshare 宏观接口（东方财富/国家统计局口径）"
 
 
 def _install(monkeypatch, **overrides):

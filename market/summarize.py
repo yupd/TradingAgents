@@ -115,6 +115,8 @@ def _news(news: list[MarketNews]) -> str:
 def _macro_block(macro) -> str:
     if macro is None or not macro.items:
         return _NA
+    if all(item.value is None for item in macro.items):
+        return _NA
     lines = []
     for item in macro.items:
         value = _fmt(item.value)
@@ -132,6 +134,18 @@ def _macro_block(macro) -> str:
 
 def _valuation_block(valuation) -> str:
     if valuation is None:
+        return _NA
+    if all(
+        value is None
+        for value in (
+            valuation.pe_ttm,
+            valuation.pe_percentile,
+            valuation.official_pe1,
+            valuation.official_pe2,
+            valuation.official_div1,
+            valuation.official_div2,
+        )
+    ):
         return _NA
     window = (
         f"近 {valuation.percentile_window} 个月"
@@ -163,6 +177,11 @@ def _valuation_block(valuation) -> str:
 
 def _margin_block(margin) -> str:
     if margin is None:
+        return _NA
+    if all(
+        value is None
+        for value in (margin.sh, margin.sz, margin.total, margin.change_5d)
+    ):
         return _NA
     lines = [
         f"沪市：{_fmt(margin.sh, _YI)}",
@@ -196,7 +215,7 @@ def _earnings_block(earnings) -> str:
         f"公告截止日：{earnings.announcement_cutoff or _NA}",
         f"净利润同比：{_fmt(earnings.net_profit_yoy, _PCT)}",
         f"营收同比：{_fmt(earnings.revenue_yoy, _PCT)}",
-        f"覆盖：{coverage}",
+        f"覆盖（接口返回样本内）：{coverage}",
         f"来源：{earnings.source or _NA}",
     ]
     if earnings.note:

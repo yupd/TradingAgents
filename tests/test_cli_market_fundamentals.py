@@ -214,6 +214,56 @@ def test_every_fundamentals_source_failing_still_exits_zero(monkeypatch, tmp_pat
         assert f"- {gap}" in text
 
 
+AKSHARE_LEAVES = (
+    "macro_china_cpi",
+    "macro_china_ppi",
+    "macro_china_pmi",
+    "macro_china_consumer_goods_retail",
+    "macro_china_fixed_asset_investment",
+    "macro_china_customs_trade",
+    "stock_index_pe_lg",
+    "index_value_csindex",
+    "stock_margin_sse_js",
+    "stock_margin_szse_js",
+    "stock_yjbb_em",
+)
+
+
+@pytest.mark.unit
+def test_every_akshare_leaf_failing_degrades_to_data_unavailable(monkeypatch, tmp_path):
+    """Exercise the real fetch path: leaf failures must yield four 数据不可用 sections."""
+    import akshare as ak
+
+    _patch_market(monkeypatch)
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("source down")
+
+    for name in AKSHARE_LEAVES:
+        monkeypatch.setattr(ak, name, boom)
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(m.app, ["market", "--fundamentals"])
+
+    assert result.exit_code == 0
+    text = (tmp_path / "reports" / "market" / f"{DAY}.md").read_text(encoding="utf-8")
+    for heading in ("宏观基本面", "估值水平", "资金面", "盈利概览"):
+        assert f"## {heading}\n\n数据不可用" in text
+    for gap in (
+        "macro: CPI 不可用",
+        "macro: PPI 不可用",
+        "macro: PMI 不可用",
+        "macro: 社零 不可用",
+        "macro: 固定资产投资 不可用",
+        "macro: 进出口 不可用",
+        "valuation: 第三方估值不可用",
+        "valuation: 中证官方估值不可用",
+        "margin: 两融数据不可用",
+        "earnings: 盈利数据不可用",
+    ):
+        assert f"- {gap}" in text
+
+
 @pytest.mark.unit
 def test_fundamentals_with_bad_date_exits_2_without_writing(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
