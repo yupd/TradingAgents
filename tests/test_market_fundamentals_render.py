@@ -61,6 +61,7 @@ def _margin() -> Margin:
 def _earnings() -> Earnings:
     return Earnings(
         period="2026-09-30",
+        announcement_cutoff=DAY,
         net_profit_yoy=100.0,
         revenue_yoy=25.0,
         coverage=1 / 3,
@@ -171,6 +172,8 @@ def test_valuation_without_official_values_names_only_the_third_party_source():
     assert "官方市盈率1：不可用" in section
     assert f"来源：{PE_SOURCE}" in section.splitlines()
     assert f"来源：{PE_SOURCE} / {OFFICIAL_SOURCE}" not in section
+    assert "口径以中证指数为准" not in section
+    assert "官方日期：不可用" in section
     gaps = collect_gaps([], None, None, None, None, fundamentals=factors)
     assert "valuation: 中证官方估值不可用" in gaps
 
@@ -217,10 +220,22 @@ def test_earnings_renders_period_growth_coverage_and_low_coverage():
     section = _section(render_market(_facts(_fundamentals()), Summary("")), "盈利概览")
 
     assert "报告期：2026-09-30" in section
+    assert f"公告截止日：{DAY}" in section
     assert "净利润同比：+100.00%" in section
     assert "营收同比：+25.00%" in section
     assert "覆盖：1/3（33.3%），覆盖不足" in section
     assert "说明：按个股财报加权聚合，非官方指数口径" in section
+
+
+def test_earnings_missing_announcement_cutoff_renders_unavailable():
+    earnings = Earnings(period="2026-09-30", net_profit_yoy=5.0, revenue_yoy=None)
+
+    section = _section(
+        render_market(_facts(Fundamentals(earnings=earnings)), Summary("")),
+        "盈利概览",
+    )
+
+    assert "公告截止日：不可用" in section
 
 
 def test_earnings_without_profit_yoy_is_unavailable_and_adds_gap():

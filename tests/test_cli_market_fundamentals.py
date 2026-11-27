@@ -108,6 +108,19 @@ def _patch_market(monkeypatch, day=DAY, latest=DAY):
     )
 
 
+def _patch_empty_market(monkeypatch, day=DAY):
+    """Every technical source is empty, the case where the report must not be written."""
+    monkeypatch.setattr("market.rules.resolve_trade_date", lambda requested: (day, None))
+    monkeypatch.setattr(
+        "market.fetch.fetch_indices",
+        lambda trade_date: [IndexQuote(name="上证", code="sh000001")],
+    )
+    monkeypatch.setattr("market.fetch.fetch_turnover", lambda trade_date: Turnover())
+    monkeypatch.setattr("market.fetch.fetch_sentiment", lambda trade_date: Sentiment())
+    monkeypatch.setattr("market.fetch.fetch_industries", lambda trade_date: None)
+    monkeypatch.setattr("market.fetch.fetch_news", lambda trade_date: NewsResult([]))
+
+
 def _headings(text: str) -> list[str]:
     return [line.removeprefix("## ") for line in text.splitlines() if line.startswith("## ")]
 
@@ -199,6 +212,35 @@ def test_every_fundamentals_source_failing_still_exits_zero(monkeypatch, tmp_pat
         "earnings: 盈利数据不可用",
     ):
         assert f"- {gap}" in text
+
+
+@pytest.mark.unit
+def test_fundamentals_with_bad_date_exits_2_without_writing(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(
+        m.app, ["market", "--fundamentals", "--date", "not-a-date"]
+    )
+
+    assert result.exit_code == 2
+    assert not (tmp_path / "reports" / "market").exists()
+
+
+@pytest.mark.unit
+def test_all_technical_sources_empty_exits_1_even_with_fundamentals(monkeypatch, tmp_path):
+    _patch_empty_market(monkeypatch)
+
+    def fail(*args, **kwargs):
+        raise AssertionError("fundamentals fetched before the empty gate")
+
+    monkeypatch.setattr("market.fundamentals.fetch_fundamentals", fail)
+    monkeypatch.chdir(tmp_path)
+
+    result = CliRunner().invoke(m.app, ["market", "--fundamentals"])
+
+    assert result.exit_code == 1
+    assert "没有可用的市场数据" in result.output
+    assert not (tmp_path / "reports" / "market").exists()
 
 
 @pytest.mark.unit

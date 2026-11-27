@@ -131,6 +131,7 @@ def _fundamentals() -> Fundamentals:
         ),
         earnings=Earnings(
             period="2026-09-30",
+            announcement_cutoff="2026-11-26",
             net_profit_yoy=100.0,
             revenue_yoy=25.0,
             coverage=1 / 3,
@@ -167,7 +168,22 @@ def test_facts_block_appends_four_fundamental_groups_with_numbers():
     assert "合计：150.00 亿元" in block
     assert "5 日变化：+10.00 亿元" in block
     assert "净利润同比：+100.00%" in block
+    assert "公告截止日：2026-11-26" in block
     assert "覆盖：1/3（33.3%） 覆盖不足" in block
+
+
+def test_facts_block_without_official_valuation_omits_the_caliber_note():
+    facts = _full_facts()
+    facts.fundamentals = Fundamentals(
+        valuation=Valuation(
+            pe_ttm=12.6, pe_percentile=50.0, percentile_window=36, pe_date="2026-11-01"
+        )
+    )
+
+    block = facts_block(facts)
+
+    assert "口径以中证指数为准" not in block
+    assert "官方日期：不可用" in block
 
 
 def test_facts_block_history_mode_adds_one_reason_group():

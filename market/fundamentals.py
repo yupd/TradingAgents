@@ -63,6 +63,7 @@ class Margin:
 @dataclass
 class Earnings:
     period: str | None = None
+    announcement_cutoff: str | None = None
     net_profit_yoy: float | None = None
     revenue_yoy: float | None = None
     coverage: float | None = None
@@ -283,7 +284,8 @@ def fetch_valuation(trade_date: str) -> Valuation:
     except Exception:
         logger.warning("中证估值取数失败", exc_info=True)
         official = None
-    if official is not None:
+    # A frame with none of the four value columns is not a usable official source.
+    if official is not None and any(value is not None for value in official[:4]):
         (
             valuation.official_pe1,
             valuation.official_pe2,
@@ -291,9 +293,7 @@ def fetch_valuation(trade_date: str) -> Valuation:
             valuation.official_div2,
             valuation.official_date,
         ) = official
-        # A frame with none of the four value columns is not a usable source.
-        if any(value is not None for value in official[:4]):
-            sources.append(OFFICIAL_SOURCE)
+        sources.append(OFFICIAL_SOURCE)
     valuation.source = " / ".join(sources) if sources else None
     return valuation
 
@@ -417,6 +417,7 @@ def _parse_earnings(frame, trade_date: str, period: str) -> Earnings | None:
     coverage = len(rows) / total if total else None
     return Earnings(
         period=period,
+        announcement_cutoff=trade_date,
         net_profit_yoy=_aggregate_yoy(rows, "净利润-净利润", "净利润-同比增长"),
         revenue_yoy=_aggregate_yoy(
             rows, "营业总收入-营业总收入", "营业总收入-同比增长"

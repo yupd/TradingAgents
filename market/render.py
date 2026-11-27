@@ -223,8 +223,17 @@ def _valuation(fundamentals) -> str:
         f"官方股息率2：{_num(valuation.official_div2, '{:.2f}%')}",
         f"官方日期：{valuation.official_date or _NA}",
         f"来源：{valuation.source or _NA}",
-        "口径以中证指数为准",
     ]
+    if any(
+        value is not None
+        for value in (
+            valuation.official_pe1,
+            valuation.official_pe2,
+            valuation.official_div1,
+            valuation.official_div2,
+        )
+    ):
+        lines.append("口径以中证指数为准")
     if valuation.note:
         lines.append(f"说明：{valuation.note}")
     return "\n".join(lines)
@@ -264,6 +273,7 @@ def _earnings(fundamentals) -> str:
         coverage = f"{coverage}，覆盖不足"
     lines = [
         f"报告期：{earnings.period or _NA}",
+        f"公告截止日：{earnings.announcement_cutoff or _NA}",
         f"净利润同比：{_pct(earnings.net_profit_yoy)}",
         f"营收同比：{_pct(earnings.revenue_yoy)}",
         f"覆盖：{coverage}",

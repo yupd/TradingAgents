@@ -59,6 +59,7 @@ def test_announcement_date_filter_and_coverage(monkeypatch):
     earnings = fetch_earnings(TRADE_DATE)
 
     assert earnings.period == "2026-09-30"
+    assert earnings.announcement_cutoff == TRADE_DATE
     assert earnings.covered == 1
     assert earnings.total == 3
     assert earnings.coverage == pytest.approx(1 / 3)

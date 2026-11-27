@@ -138,19 +138,27 @@ def _valuation_block(valuation) -> str:
         if valuation.percentile_window is not None
         else _NA
     )
-    return "\n".join(
-        [
-            f"第三方 PE(TTM)：{_fmt(valuation.pe_ttm)}（{valuation.pe_date or _NA}）",
-            f"PE 分位：{_rate(valuation.pe_percentile)}（{window}）",
-            f"官方市盈率1：{_fmt(valuation.official_pe1)}",
-            f"官方市盈率2：{_fmt(valuation.official_pe2)}",
-            f"官方股息率1：{_fmt(valuation.official_div1, '{:.2f}%')}",
-            f"官方股息率2：{_fmt(valuation.official_div2, '{:.2f}%')}",
-            f"官方日期：{valuation.official_date or _NA}",
-            f"来源：{valuation.source or _NA}",
-            "口径以中证指数为准",
-        ]
-    )
+    lines = [
+        f"第三方 PE(TTM)：{_fmt(valuation.pe_ttm)}（{valuation.pe_date or _NA}）",
+        f"PE 分位：{_rate(valuation.pe_percentile)}（{window}）",
+        f"官方市盈率1：{_fmt(valuation.official_pe1)}",
+        f"官方市盈率2：{_fmt(valuation.official_pe2)}",
+        f"官方股息率1：{_fmt(valuation.official_div1, '{:.2f}%')}",
+        f"官方股息率2：{_fmt(valuation.official_div2, '{:.2f}%')}",
+        f"官方日期：{valuation.official_date or _NA}",
+        f"来源：{valuation.source or _NA}",
+    ]
+    if any(
+        value is not None
+        for value in (
+            valuation.official_pe1,
+            valuation.official_pe2,
+            valuation.official_div1,
+            valuation.official_div2,
+        )
+    ):
+        lines.append("口径以中证指数为准")
+    return "\n".join(lines)
 
 
 def _margin_block(margin) -> str:
@@ -185,6 +193,7 @@ def _earnings_block(earnings) -> str:
         coverage = f"{coverage} 覆盖不足"
     lines = [
         f"报告期：{earnings.period or _NA}",
+        f"公告截止日：{earnings.announcement_cutoff or _NA}",
         f"净利润同比：{_fmt(earnings.net_profit_yoy, _PCT)}",
         f"营收同比：{_fmt(earnings.revenue_yoy, _PCT)}",
         f"覆盖：{coverage}",

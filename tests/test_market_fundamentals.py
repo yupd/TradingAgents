@@ -127,6 +127,7 @@ def test_official_columns_all_missing_do_not_mark_the_source_available(monkeypat
 
     assert valuation.official_pe1 is None
     assert valuation.official_pe2 is None
+    assert valuation.official_date is None
     assert valuation.source == "乐咕乐股（akshare）"
 
 
