@@ -9,6 +9,12 @@ from dataclasses import dataclass
 logger = logging.getLogger(__name__)
 
 SOURCE = "akshare 宏观接口（国家统计局口径）"
+PE_SOURCE = "乐咕乐股（akshare）"
+OFFICIAL_SOURCE = "中证指数（akshare）"
+MARGIN_SOURCE = "上交所/深交所（akshare）"
+EARNINGS_SOURCE = "东财业绩报表（akshare）"
+EARNINGS_NOTE = "按个股财报加权聚合，非官方指数口径"
+PERCENTILE_MONTHS = 120
 MONTH_RE = re.compile(r"(\d{4})年(\d{1,2})月")
 
 
@@ -116,7 +122,7 @@ def _simple_item(name, unit, frame, column):
     return MacroItem(name, value, unit, str(row["月份"]), SOURCE)
 
 
-def _pmi_item(name, unit, frame, _column=None):
+def _pmi_item(name, unit, frame):
     row = _latest_row(frame)
     if row is None:
         return MacroItem(name, None, unit, None, SOURCE)
@@ -128,7 +134,7 @@ def _pmi_item(name, unit, frame, _column=None):
     return MacroItem(name, value, unit, str(row["月份"]), SOURCE, note)
 
 
-def _fixed_asset_item(name, unit, frame, _column=None):
+def _fixed_asset_item(name, unit, frame):
     row = _latest_row(frame)
     if row is None:
         return MacroItem(name, None, unit, None, SOURCE)
@@ -146,7 +152,7 @@ def _fixed_asset_item(name, unit, frame, _column=None):
     return MacroItem(name, (current / prior - 1) * 100, unit, period, SOURCE, note)
 
 
-def _trade_item(name, unit, frame, _column=None):
+def _trade_item(name, unit, frame):
     row = _latest_row(frame)
     if row is None:
         return MacroItem(name, None, unit, None, SOURCE)
@@ -192,3 +198,241 @@ def fetch_macro() -> MacroBlock:
             logger.warning("宏观取数失败：%s", name, exc_info=True)
             items.append(MacroItem(name, None, unit, None, SOURCE))
     return MacroBlock(items=items)
+
+
+def _iso_date(value) -> str | None:
+    """Normalize akshare date cells (date, Timestamp, str, NaT) to ``YYYY-MM-DD``."""
+    text = str(value)[:10] if value is not None else ""
+    return text if len(text) == 10 else None
+
+
+def _valuation_history(trade_date: str):
+    """Latest TTM PE, its monthly percentile and window from the 沪深300 series."""
+    import akshare as ak
+
+    frame = ak.stock_index_pe_lg(symbol="沪深300")
+    if (
+        frame is None
+        or frame.empty
+        or "日期" not in frame.columns
+        or "滚动市盈率" not in frame.columns
+    ):
+        return None
+    rows = []
+    for _, row in frame.iterrows():
+        day = _iso_date(row.get("日期"))
+        value = _num(row.get("滚动市盈率"))
+        if day is not None and day <= trade_date and value is not None:
+            rows.append((day, value))
+    if not rows:
+        return None
+    rows.sort()
+    window = rows[-PERCENTILE_MONTHS:]
+    latest_date, latest = window[-1]
+    percentile = round(sum(1 for _, value in window if value <= latest) / len(window) * 100, 1)
+    return latest, percentile, len(window), latest_date
+
+
+def _official_valuation(trade_date: str):
+    """Latest official CSI 300 PE/dividend rows at or before ``trade_date``."""
+    import akshare as ak
+
+    frame = ak.index_value_csindex(symbol="000300")
+    if frame is None or frame.empty or "日期" not in frame.columns:
+        return None
+    best = None
+    for _, row in frame.iterrows():
+        day = _iso_date(row.get("日期"))
+        if day is not None and day <= trade_date and (best is None or day > best[0]):
+            best = (day, row)
+    if best is None:
+        return None
+    row = best[1]
+
+    def column(name):
+        return _num(row.get(name)) if name in frame.columns else None
+
+    return (
+        column("市盈率1"),
+        column("市盈率2"),
+        column("股息率1"),
+        column("股息率2"),
+        best[0],
+    )
+
+
+def fetch_valuation(trade_date: str) -> Valuation:
+    """Third-party percentile and official CSI 300 values; each source degrades alone."""
+    valuation = Valuation()
+    sources = []
+    try:
+        history = _valuation_history(trade_date)
+    except Exception:
+        logger.warning("估值历史取数失败", exc_info=True)
+        history = None
+    if history is not None:
+        (
+            valuation.pe_ttm,
+            valuation.pe_percentile,
+            valuation.percentile_window,
+            valuation.pe_date,
+        ) = history
+        sources.append(PE_SOURCE)
+    try:
+        official = _official_valuation(trade_date)
+    except Exception:
+        logger.warning("中证估值取数失败", exc_info=True)
+        official = None
+    if official is not None:
+        (
+            valuation.official_pe1,
+            valuation.official_pe2,
+            valuation.official_div1,
+            valuation.official_div2,
+            valuation.official_date,
+        ) = official
+        sources.append(OFFICIAL_SOURCE)
+    valuation.source = " / ".join(sources) if sources else None
+    return valuation
+
+
+def _margin_series(fetch, trade_date: str) -> dict[str, float]:
+    """``date -> 融资融券余额（亿元）`` for rows at or before ``trade_date``."""
+    frame = fetch()
+    if (
+        frame is None
+        or frame.empty
+        or "日期" not in frame.columns
+        or "融资融券余额" not in frame.columns
+    ):
+        return {}
+    series = {}
+    for _, row in frame.iterrows():
+        day = _iso_date(row.get("日期"))
+        value = _num(row.get("融资融券余额"))
+        if day is not None and day <= trade_date and value is not None:
+            series[day] = value / 1e8  # akshare reports 元
+    return series
+
+
+def _combine_margin(sh: dict[str, float], sz: dict[str, float]) -> Margin:
+    """Align both markets on common dates; totals need both sides."""
+    common = sorted(set(sh) & set(sz))
+    if common:
+        latest = common[-1]
+        total = sh[latest] + sz[latest]
+        change = None
+        if len(common) >= 6:
+            prior = common[-6]
+            change = round(total - (sh[prior] + sz[prior]), 2)
+        return Margin(
+            sh=round(sh[latest], 2),
+            sz=round(sz[latest], 2),
+            total=round(total, 2),
+            change_5d=change,
+            as_of=latest,
+            source=MARGIN_SOURCE,
+        )
+    if not sh and not sz:
+        return Margin()
+    both_present = bool(sh) and bool(sz)
+    if both_present:  # no shared date: report only the later side, never merge dates
+        if max(sz) > max(sh):
+            sh = {}
+        else:
+            sz = {}
+    side = sh or sz
+    latest = max(side)
+    if both_present:
+        note = "两市无共同日期，仅报可用单市"
+    elif sh:
+        note = "仅沪市数据可用，合计与 5 日变化不可用"
+    else:
+        note = "仅深市数据可用，合计与 5 日变化不可用"
+    return Margin(
+        sh=round(sh[latest], 2) if sh else None,
+        sz=round(sz[latest], 2) if sz else None,
+        as_of=latest,
+        source="上交所（akshare）" if sh else "深交所（akshare）",
+        note=note,
+    )
+
+
+def fetch_margin(trade_date: str) -> Margin:
+    """SSE and SZSE margin balances; a failed side degrades, both failing stays empty."""
+    import akshare as ak
+
+    series = []
+    for name, fetch in (
+        ("沪市", ak.stock_margin_sse_js),
+        ("深市", ak.stock_margin_szse_js),
+    ):
+        try:
+            series.append(_margin_series(fetch, trade_date))
+        except Exception:
+            logger.warning("两融取数失败：%s", name, exc_info=True)
+            series.append({})
+    return _combine_margin(series[0], series[1])
+
+
+def latest_report_period(trade_date: str) -> str:
+    """Most recent quarter-end (03-31/06-30/09-30/12-31) at or before ``trade_date``."""
+    year, month, day = (int(part) for part in trade_date[:10].split("-"))
+    for end_month, end_day in ((12, 31), (9, 30), (6, 30), (3, 31)):
+        if (month, day) >= (end_month, end_day):
+            return f"{year:04d}-{end_month:02d}-{end_day:02d}"
+    return f"{year - 1:04d}-12-31"
+
+
+def _aggregate_yoy(rows, value_column, yoy_column):
+    """Weighted YoY over rows where both the value and its YoY are usable."""
+    current = prior = 0.0
+    for row in rows:
+        value = _num(row.get(value_column))
+        yoy = _num(row.get(yoy_column))
+        if value is None or yoy is None or yoy == -100:
+            continue
+        current += value
+        prior += value / (1 + yoy / 100)
+    if prior <= 0:
+        return None
+    return round((current / prior - 1) * 100, 2)
+
+
+def _parse_earnings(frame, trade_date: str, period: str) -> Earnings | None:
+    """Filter by announcement date and aggregate weighted YoY plus coverage."""
+    if frame is None or getattr(frame, "empty", True):
+        return None
+    rows = []
+    for _, row in frame.iterrows():
+        day = _iso_date(row.get("最新公告日期"))
+        if day is not None and day <= trade_date:
+            rows.append(row)
+    total = len(frame)
+    coverage = len(rows) / total if total else None
+    return Earnings(
+        period=period,
+        net_profit_yoy=_aggregate_yoy(rows, "净利润-净利润", "净利润-同比增长"),
+        revenue_yoy=_aggregate_yoy(
+            rows, "营业总收入-营业总收入", "营业总收入-同比增长"
+        ),
+        coverage=coverage,
+        covered=len(rows),
+        total=total,
+        coverage_low=coverage is not None and coverage < 0.8,
+        source=EARNINGS_SOURCE,
+        note=EARNINGS_NOTE,
+    )
+
+
+def fetch_earnings(trade_date: str) -> Earnings | None:
+    """Latest reported quarter aggregated across companies; failure or empty table is ``None``."""
+    import akshare as ak
+
+    period = latest_report_period(trade_date)
+    try:
+        frame = ak.stock_yjbb_em(date=period.replace("-", ""))
+    except Exception:
+        logger.warning("业绩报表取数失败", exc_info=True)
+        return None
+    return _parse_earnings(frame, trade_date, period)
