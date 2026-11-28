@@ -111,3 +111,33 @@ def test_market_analyst_offers_kline_patterns_and_constrains_claims(monkeypatch)
     assert "get_kline_patterns" in prompt
     assert "candlestick" in prompt
     assert "do not assert" in prompt
+
+
+def test_market_analyst_indicator_names_are_supported(monkeypatch):
+    """The prompt's indicator list and the vendor's mapping must not drift:
+    a name the model is told to use but the vendor rejects is silently lost."""
+    import re
+
+    from langchain_core.messages import AIMessage
+
+    import tradingagents.agents.analysts.market_analyst as market_analyst
+    from tradingagents.dataflows.vendors.a_share import quotes
+
+    seen = {}
+
+    def fake_take_turn(prompt, llm, tools, messages):
+        msgs = prompt.format_messages(messages=[])
+        seen["prompt"] = "\n".join(str(m.content) for m in msgs)
+        return AIMessage("ok"), "report"
+
+    monkeypatch.setattr(market_analyst, "take_turn", fake_take_turn)
+    market_analyst.create_market_analyst(object())({
+        "trade_date": "2026-11-21",
+        "messages": [],
+        "company_of_interest": "600519",
+        "instrument_context": "",
+    })
+    names = re.findall(r"^- ([a-z0-9_]+):", seen["prompt"], flags=re.MULTILINE)
+    assert names
+    missing = [name for name in names if name not in quotes._INDICATORS]
+    assert not missing, missing

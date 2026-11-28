@@ -1,3 +1,5 @@
+import re
+
 import pandas as pd
 import pytest
 
@@ -128,3 +130,74 @@ def test_kline_patterns_clamps_non_positive_window(monkeypatch):
     monkeypatch.setattr(q, "_mootdx_bars", lambda *a: frame)
     text = q.get_kline_patterns("600519", idx[-1].strftime("%Y-%m-%d"), 0)
     assert "窗口：60 根" in text
+
+
+PROMPT_INDICATORS = ("close_50_sma", "close_200_sma", "close_10_ema", "macd",
+                     "macds", "macdh", "rsi", "boll", "boll_ub", "boll_lb",
+                     "atr", "vwma")
+
+
+def _long_frame(periods=250):
+    import numpy as np
+    idx = pd.date_range("2025-01-01", periods=periods, freq="D")
+    close = np.linspace(10.0, 20.0, periods)
+    return pd.DataFrame({"date": idx.strftime("%Y-%m-%d"), "open": close,
+                         "high": close + 0.3, "low": close - 0.3,
+                         "close": close, "volume": 1000.0})
+
+
+@pytest.mark.parametrize("indicator", PROMPT_INDICATORS)
+def test_every_prompt_indicator_resolves(monkeypatch, indicator):
+    frame = _long_frame()
+    monkeypatch.setattr(q, "_mootdx_bars", lambda *a: frame)
+    text = q.get_indicators("600519", indicator, frame["date"].iloc[-1], 30)
+    assert "UNSUPPORTED_INDICATOR" not in text, text
+    assert re.search(r"\| \d{4}-\d{2}-\d{2} \| [-\d.]+ \|", text), text
+
+
+def test_short_history_returns_data_unavailable(monkeypatch):
+    frame = _long_frame(60)
+    monkeypatch.setattr(q, "_mootdx_bars", lambda *a: frame)
+    text = q.get_indicators("600519", "close_200_sma", frame["date"].iloc[-1])
+    assert text.startswith("DATA_UNAVAILABLE"), text
+    assert "close_200_sma" in text and "needs at least 200 bars" in text
+
+
+def test_short_history_allows_10_ema(monkeypatch):
+    frame = _long_frame(60)
+    monkeypatch.setattr(q, "_mootdx_bars", lambda *a: frame)
+    text = q.get_indicators("600519", "close_10_ema", frame["date"].iloc[-1])
+    assert "DATA_UNAVAILABLE" not in text
+    assert re.search(r"\| \d{4}-\d{2}-\d{2} \| [-\d.]+ \|", text), text
+
+
+def test_unknown_indicator_still_rejected(monkeypatch):
+    monkeypatch.setattr(q, "_bars_until",
+                        lambda *a: (_ for _ in ()).throw(AssertionError("fetch used")))
+    assert q.get_indicators("600519", "mfi", "2026-11-21") == "UNSUPPORTED_INDICATOR: mfi"
+
+
+def test_close_200_sma_matches_rolling_mean(monkeypatch):
+    import numpy as np
+    frame = _long_frame()
+    monkeypatch.setattr(q, "_mootdx_bars", lambda *a: frame)
+    text = q.get_indicators("600519", "close_200_sma", frame["date"].iloc[-1], 30)
+    last = re.findall(r"\| \d{4}-\d{2}-\d{2} \| ([-\d.]+) \|", text)[-1]
+    expected = np.linspace(10.0, 20.0, 250)[-200:].mean()
+    assert abs(float(last) - expected) < 1e-3
+
+
+def test_partial_window_rows_are_not_emitted(monkeypatch):
+    frame = _long_frame(210)
+    monkeypatch.setattr(q, "_mootdx_bars", lambda *a: frame)
+    text = q.get_indicators("600519", "close_200_sma", frame["date"].iloc[-1], 30)
+    dates = re.findall(r"\| (\d{4}-\d{2}-\d{2}) \|", text)
+    assert len(dates) == 11
+    assert dates[0] == frame["date"].iloc[199]
+
+
+def test_non_positive_look_back_clamps(monkeypatch):
+    frame = _long_frame()
+    monkeypatch.setattr(q, "_mootdx_bars", lambda *a: frame)
+    text = q.get_indicators("600519", "rsi", frame["date"].iloc[-1], 0)
+    assert re.search(r"\| \d{4}-\d{2}-\d{2} \| [-\d.]+ \|", text), text

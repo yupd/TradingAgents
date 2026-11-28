@@ -147,7 +147,20 @@ def _indicator_frame(bars: list[DailyBar]) -> pd.DataFrame:
 
 _INDICATORS = {"rsi": "rsi_14", "macd": "macd", "boll": "boll",
                "ma": "close_20_sma", "ema": "close_20_ema", "atr": "atr_14",
-               "kdj": "kdjk", "kdj_k": "kdjk", "kdj_d": "kdjd", "kdj_j": "kdjj"}
+               "kdj": "kdjk", "kdj_k": "kdjk", "kdj_d": "kdjd", "kdj_j": "kdjj",
+               # Names market_analyst offers; stockstats uses the same column names.
+               "close_50_sma": "close_50_sma", "close_200_sma": "close_200_sma",
+               "close_10_ema": "close_10_ema", "macds": "macds", "macdh": "macdh",
+               "boll_ub": "boll_ub", "boll_lb": "boll_lb", "vwma": "vwma"}
+
+
+# stockstats fills leading values from an expanding window, so a short history
+# yields a number that is not the indicator its column name promises.
+_MIN_BARS = {"close_50_sma": 50, "close_200_sma": 200, "close_10_ema": 10,
+             "macd": 26, "macds": 35, "macdh": 35, "rsi_14": 15,
+             "boll": 20, "boll_ub": 20, "boll_lb": 20, "atr_14": 15,
+             "vwma": 20, "close_20_sma": 20, "close_20_ema": 20,
+             "kdjk": 9, "kdjd": 9, "kdjj": 9}
 
 
 def _stockstats(bars: list[DailyBar]):
@@ -169,16 +182,24 @@ def get_indicators(symbol: str, indicator: str, curr_date: str, look_back_days: 
     column = _INDICATORS.get(key)
     if column is None:
         return f"UNSUPPORTED_INDICATOR: {indicator}"
+    requested = look_back_days if look_back_days > 0 else 30
     try:
         bars = _bars_until(symbol, curr_date)
         if not bars:
             return f"DATA_UNAVAILABLE: no bars for {symbol} up to {curr_date}"
+        needed = _MIN_BARS.get(column, 0)
+        if len(bars) < needed:
+            return (f"DATA_UNAVAILABLE: {key} needs at least {needed} bars, "
+                    f"got {len(bars)}")
         frame = _stockstats(bars)
-        series = frame[column].dropna().tail(look_back_days)
+        # Skip bars whose window is still partial; stockstats would otherwise
+        # fill them with expanding-window means labelled as the full indicator.
+        series = frame[column].iloc[max(needed - 1, 0):].dropna().tail(requested)
     except Exception as exc:
         return f"DATA_UNAVAILABLE: indicators for {symbol} failed ({exc})"
-    rows = [[bars[-len(series) + i].date, f"{float(value):.4f}"]
-            for i, value in enumerate(series.tolist())]
+    # StockDataFrame indexes rows by date, so the date travels with the value
+    # even when dropna() removes a row from the middle.
+    rows = [[str(i), f"{float(value):.4f}"] for i, value in series.items()]
     table = "\n".join(f"| {d} | {v} |" for d, v in rows)
     return (f"# {symbol} {key.upper()}\n\n| Date | Value |\n|---|---|\n{table}\n\n"
             f"Source: {bars[-1].source} | As of: {bars[-1].date}")
