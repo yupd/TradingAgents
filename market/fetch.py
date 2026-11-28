@@ -509,3 +509,4 @@ class MarketFacts:
     sources: list[str] = field(default_factory=list)
     flags: list = field(default_factory=list)
     fundamentals: "Fundamentals | None" = None
+    cutoff: str | None = None

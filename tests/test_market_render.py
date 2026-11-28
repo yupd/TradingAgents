@@ -85,6 +85,17 @@ def test_seven_sections_appear_in_fixed_order():
     )
 
 
+def test_header_uses_explicit_cutoff():
+    facts = MarketFacts(trade_date="2026-11-25", cutoff="运行时刻 2026-11-25 10:00")
+    report = render_market(facts, Summary("指数放量上行。"))
+    assert "行情截止：运行时刻 2026-11-25 10:00；行业/新闻为运行时刻快照" in report
+
+
+def test_header_without_cutoff_falls_back_to_close_time():
+    report = render_market(MarketFacts(trade_date="2026-11-25"), Summary("指数放量上行。"))
+    assert "行情截止：2026-11-25 15:00；行业/新闻为运行时刻快照" in report
+
+
 def test_full_facts_render_values_flags_sources_and_news_label():
     report = render_market(_full_facts(), Summary("指数放量上行。"))
 

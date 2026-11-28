@@ -366,7 +366,7 @@ def render_market(facts: MarketFacts, summary: Summary) -> str:
         headings[gap_index:gap_index] = list(_FUNDAMENTAL_HEADINGS)
     lines = [
         f"# A 股大盘复盘 {facts.trade_date}",
-        f"行情截止：{facts.trade_date} 15:00；行业/新闻为运行时刻快照",
+        f"行情截止：{facts.cutoff or f'{facts.trade_date} 15:00'}；行业/新闻为运行时刻快照",
     ]
     for heading in headings:
         lines += ["", f"## {heading}", "", sections[heading]]
