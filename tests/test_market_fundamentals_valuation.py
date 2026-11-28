@@ -47,11 +47,16 @@ def _monthly(values, end="2026-11-01"):
     )
 
 
-def _install(monkeypatch, history=None, official=None):
+def _install(monkeypatch, history=None, official=None, indexes=None):
     import akshare as ak
 
     monkeypatch.setattr(
         ak, "stock_index_pe_lg", history or (lambda symbol: _monthly(list(range(1, 150))))
+    )
+    monkeypatch.setattr(
+        fundamentals,
+        "_danjuan_index",
+        indexes or (lambda spec, trade_date: None),
     )
     if official is None:
         official = lambda symbol: pd.DataFrame(
@@ -377,3 +382,91 @@ def test_danjuan_string_zero_result_code_is_accepted(monkeypatch):
 
     assert record is not None
     assert record.code == "SH000300"
+
+
+def _records():
+    return [
+        IndexValuation(
+            name=spec.name,
+            code=spec.code,
+            pe=DJ_EXPECTED[spec.code][0],
+            pe_percentile=DJ_EXPECTED[spec.code][1],
+            pb=DJ_EXPECTED[spec.code][2],
+            pb_percentile=DJ_EXPECTED[spec.code][3],
+            as_of="2026-11-27",
+            source=DJ_SOURCE,
+        )
+        for spec in INDEX_SPECS
+    ]
+
+
+def test_fetch_valuation_collects_five_indexes_in_spec_order(monkeypatch):
+    records = _records()
+    by_code = {record.code: record for record in records}
+    _install(monkeypatch, indexes=lambda spec, trade_date: by_code[spec.code])
+
+    valuation = fetch_valuation(TRADE_DATE)
+
+    assert valuation.indexes == records
+    assert [record.code for record in valuation.indexes] == [
+        spec.code for spec in INDEX_SPECS
+    ]
+
+
+def test_fetch_valuation_skips_a_missing_index(monkeypatch):
+    records = _records()
+    by_code = {record.code: record for record in records}
+    missing = INDEX_SPECS[2].code
+
+    def fake(spec, trade_date):
+        return None if spec.code == missing else by_code[spec.code]
+
+    _install(monkeypatch, indexes=fake)
+
+    valuation = fetch_valuation(TRADE_DATE)
+
+    assert len(valuation.indexes) == 4
+    assert missing not in [record.code for record in valuation.indexes]
+
+
+def test_fetch_valuation_all_indexes_missing_keeps_empty_valuation(monkeypatch):
+    def boom(symbol):
+        raise RuntimeError("down")
+
+    _install(monkeypatch, history=boom, official=boom)
+
+    valuation = fetch_valuation(TRADE_DATE)
+
+    assert valuation.indexes == []
+    assert valuation == Valuation()
+
+
+def test_fetch_valuation_isolates_one_index_exception(monkeypatch):
+    records = _records()
+    by_code = {record.code: record for record in records}
+    broken = INDEX_SPECS[1].code
+
+    def fake(spec, trade_date):
+        if spec.code == broken:
+            raise RuntimeError("danjuan down")
+        return by_code[spec.code]
+
+    _install(monkeypatch, indexes=fake)
+
+    valuation = fetch_valuation(TRADE_DATE)
+
+    assert [record.code for record in valuation.indexes] == [
+        spec.code for spec in INDEX_SPECS if spec.code != broken
+    ]
+
+
+def test_index_records_leave_hs300_fields_unchanged(monkeypatch):
+    by_code = {record.code: record for record in _records()}
+    _install(monkeypatch, indexes=lambda spec, trade_date: by_code[spec.code])
+
+    valuation = fetch_valuation(TRADE_DATE)
+
+    assert valuation.pe_ttm == 149.0
+    assert valuation.pe_percentile == 100.0
+    assert valuation.official_pe1 == 13.61
+    assert valuation.source == f"{PE_SOURCE} / {OFFICIAL_SOURCE}"

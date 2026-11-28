@@ -1,6 +1,7 @@
 """Assembly of the four fundamentals blocks and the history-mode short circuit."""
 
 import pandas as pd
+import pytest
 
 from market.fundamentals import (
     Earnings,
@@ -15,6 +16,13 @@ from market.fundamentals import (
 )
 
 TRADE_DATE = "2026-11-26"
+
+
+@pytest.fixture(autouse=True)
+def _offline_danjuan(monkeypatch):
+    monkeypatch.setattr(
+        "market.fundamentals._danjuan_index", lambda spec, trade_date: None
+    )
 
 
 def _blocks():
