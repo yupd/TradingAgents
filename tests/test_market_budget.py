@@ -1,4 +1,4 @@
-"""The default market run stays within 12 source calls; fundamentals adds ≤34."""
+"""The default market run stays within 12 source calls; fundamentals adds ≤39, ≤44 with fallback."""
 
 from datetime import date, timedelta
 from types import SimpleNamespace
@@ -7,6 +7,7 @@ import pandas as pd
 import pytest
 
 from market.fetch import Industries, MarketNews, NewsResult, Turnover
+from market.fundamentals import DJ_SOURCE, IndexValuation
 from market.summarize import Summary
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
@@ -84,9 +85,32 @@ def _install_llm(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
 
 
-def _install_fundamentals(monkeypatch, calls):
+def _install_fundamentals(monkeypatch, calls, primary_ok=True):
     """Fake each akshare leaf; earnings fakes 12 pages per call like the real table."""
     import akshare as ak
+
+    def index_record(spec):
+        return IndexValuation(
+            name=spec.name,
+            code=spec.code,
+            pe=12.6,
+            pe_percentile=35.0,
+            pb=1.4,
+            pb_percentile=28.0,
+            as_of=DAY,
+            source=DJ_SOURCE,
+        )
+
+    def danjuan_index(spec, trade_date):
+        calls.append("index_valuation")
+        return index_record(spec) if primary_ok else None
+
+    def baifenwei_index(spec, trade_date):
+        calls.append("index_fallback")
+        return None if primary_ok else index_record(spec)
+
+    monkeypatch.setattr("market.fundamentals._danjuan_index", danjuan_index)
+    monkeypatch.setattr("market.fundamentals._baifenwei_index", baifenwei_index)
 
     def counted(name, frame):
         def fake(*args, **kwargs):
@@ -181,7 +205,9 @@ def test_normal_market_run_uses_exactly_twelve_source_calls(monkeypatch, tmp_pat
 
 
 @pytest.mark.unit
-def test_fundamentals_mode_adds_at_most_thirty_four_source_calls(monkeypatch, tmp_path):
+def test_fundamentals_mode_uses_thirty_nine_source_calls_without_fallback(
+    monkeypatch, tmp_path
+):
     technical: list[str] = []
     fundamental: list[str] = []
     _install_technical(monkeypatch, technical)
@@ -199,7 +225,28 @@ def test_fundamentals_mode_adds_at_most_thirty_four_source_calls(monkeypatch, tm
     assert fundamental.count("valuation") == 2
     assert fundamental.count("margin") == 2
     assert fundamental.count("earnings") == 24
-    assert len(fundamental) == 34
-    assert len(fundamental) <= 34
+    assert fundamental.count("index_valuation") == 5
+    assert fundamental.count("index_fallback") == 0
+    assert len(fundamental) == 39
     assert len(technical) == 12
-    assert len(technical) + len(fundamental) <= 46
+    assert len(technical) + len(fundamental) == 51
+
+
+@pytest.mark.unit
+def test_fundamentals_mode_falls_back_for_all_five_indexes(monkeypatch, tmp_path):
+    technical: list[str] = []
+    fundamental: list[str] = []
+    _install_technical(monkeypatch, technical)
+    _install_fundamentals(monkeypatch, fundamental, primary_ok=False)
+    _install_llm(monkeypatch, tmp_path)
+
+    from cli.run import run_market
+
+    path = run_market(DAY, fundamentals=True)
+
+    assert path.exists()
+    assert fundamental.count("index_valuation") == 5
+    assert fundamental.count("index_fallback") == 5
+    assert len(fundamental) == 44
+    assert len(technical) == 12
+    assert len(technical) + len(fundamental) == 56
