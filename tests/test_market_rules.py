@@ -199,7 +199,9 @@ def _market_window(requested, now):
 
 def test_market_window_intraday_falls_back(monkeypatch):
     # 2026-11-25 is a Wednesday; before 15:00 the last completed session is Tuesday.
-    monkeypatch.setattr("market.rules.previous_trade_date", lambda value: "2026-11-24")
+    # Identity mirrors the inclusive real calendar, so skipping the clock adjustment
+    # would leave the target at today and yield 2026-11-25 instead.
+    monkeypatch.setattr("market.rules.previous_trade_date", lambda value: value)
 
     window = _market_window(None, datetime(2026, 11, 25, 10, 0, tzinfo=_SHANGHAI))
 
@@ -209,7 +211,8 @@ def test_market_window_intraday_falls_back(monkeypatch):
 
 
 def test_market_window_after_close_keeps_today(monkeypatch):
-    monkeypatch.setattr("market.rules.previous_trade_date", lambda value: "2026-11-25")
+    # Identity: an implementation that always pre-adjusts would report 2026-11-24.
+    monkeypatch.setattr("market.rules.previous_trade_date", lambda value: value)
 
     window = _market_window(None, datetime(2026, 11, 25, 16, 0, tzinfo=_SHANGHAI))
 
@@ -243,8 +246,12 @@ def test_market_window_explicit_history_unchanged(monkeypatch):
 
 
 def test_market_window_weekend_falls_back(monkeypatch):
-    # 2026-11-28 is a Saturday; the most recent session is Friday.
-    monkeypatch.setattr("market.rules.previous_trade_date", lambda value: "2026-11-27")
+    # 2026-11-28 is a Saturday; the most recent session is Friday. Unlike identity,
+    # this models a non-trading day, so the calendar itself must skip the weekend.
+    previous = {"2026-11-28": "2026-11-27", "2026-11-27": "2026-11-27"}
+    monkeypatch.setattr(
+        "market.rules.previous_trade_date", lambda value: previous[value]
+    )
 
     window = _market_window(None, datetime(2026, 11, 28, 10, 0, tzinfo=_SHANGHAI))
 
