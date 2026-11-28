@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 SOURCE = "akshare 宏观接口（东方财富/国家统计局口径）"
 PE_SOURCE = "乐咕乐股（akshare）"
 OFFICIAL_SOURCE = "中证指数（akshare）"
+DJ_SOURCE = "蛋卷基金（第三方）"
+BFW_SOURCE = "百分位.com（第三方）"
 MARGIN_SOURCE = "上交所/深交所（akshare）"
 EARNINGS_SOURCE = "东财业绩报表（akshare）"
 EARNINGS_NOTE = "按可比公司净利润总额计算，非官方指数口径"
@@ -46,6 +48,22 @@ class IndexValuation:
     pb_percentile: float | None = None
     as_of: str | None = None
     source: str | None = None
+
+
+@dataclass(frozen=True)
+class IndexSpec:
+    name: str
+    code: str
+    baifenwei_slug: str
+
+
+INDEX_SPECS: tuple[IndexSpec, ...] = (
+    IndexSpec("沪深300", "SH000300", "hs300"),
+    IndexSpec("创业板", "SZ399006", "cyb"),
+    IndexSpec("科创50", "SH000688", "kc50"),
+    IndexSpec("中证500", "SH000905", "zz500"),
+    IndexSpec("中证1000", "SH000852", "zz1000"),
+)
 
 
 @dataclass

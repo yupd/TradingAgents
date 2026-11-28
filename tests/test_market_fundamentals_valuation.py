@@ -1,8 +1,30 @@
 import pandas as pd
 
-from market.fundamentals import OFFICIAL_SOURCE, PE_SOURCE, Valuation, fetch_valuation
+from market.fundamentals import (
+    BFW_SOURCE,
+    DJ_SOURCE,
+    INDEX_SPECS,
+    OFFICIAL_SOURCE,
+    PE_SOURCE,
+    Valuation,
+    fetch_valuation,
+)
 
 TRADE_DATE = "2026-11-27"
+
+
+def test_index_specs_order_and_mapping():
+    assert [
+        (spec.name, spec.code, spec.baifenwei_slug) for spec in INDEX_SPECS
+    ] == [
+        ("沪深300", "SH000300", "hs300"),
+        ("创业板", "SZ399006", "cyb"),
+        ("科创50", "SH000688", "kc50"),
+        ("中证500", "SH000905", "zz500"),
+        ("中证1000", "SH000852", "zz1000"),
+    ]
+    assert DJ_SOURCE == "蛋卷基金（第三方）"
+    assert BFW_SOURCE == "百分位.com（第三方）"
 
 
 def test_valuation_indexes_default_to_isolated_empty_lists():
