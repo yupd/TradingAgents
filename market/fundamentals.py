@@ -233,19 +233,19 @@ def _baifenwei_index(spec: IndexSpec, trade_date: str) -> IndexValuation | None:
             or not 0 <= pb_percentile <= 100
         ):
             return None
+        return IndexValuation(
+            name=spec.name,
+            code=spec.code,
+            pe=pe,
+            pe_percentile=round(pe_percentile, 1),
+            pb=pb,
+            pb_percentile=round(pb_percentile, 1),
+            as_of=date_match.group(1),
+            source=BFW_SOURCE,
+        )
     except Exception:
         logger.warning("百分位指数估值取数失败：%s", spec.name, exc_info=True)
         return None
-    return IndexValuation(
-        name=spec.name,
-        code=spec.code,
-        pe=pe,
-        pe_percentile=round(pe_percentile, 1),
-        pb=pb,
-        pb_percentile=round(pb_percentile, 1),
-        as_of=date_match.group(1),
-        source=BFW_SOURCE,
-    )
 
 
 def _period_of(row):

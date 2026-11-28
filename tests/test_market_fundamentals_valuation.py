@@ -529,6 +529,12 @@ def _serve(monkeypatch, calls, slug):
     monkeypatch.setattr(fundamentals.requests, "get", fake_get)
 
 
+def _serve_raw(monkeypatch, page):
+    monkeypatch.setattr(
+        fundamentals.requests, "get", lambda url, **kwargs: _PageResponse(page)
+    )
+
+
 @pytest.mark.parametrize("spec", INDEX_SPECS, ids=lambda spec: spec.code)
 def test_baifenwei_page_parses_each_index(monkeypatch, spec):
     calls = []
@@ -614,9 +620,12 @@ def test_baifenwei_out_of_range_values_return_none(monkeypatch, pe):
     assert _baifenwei_index(INDEX_SPECS[1], TRADE_DATE) is None
 
 
-def test_baifenwei_timeout_returns_none(monkeypatch):
+@pytest.mark.parametrize(
+    "error", [requests.Timeout("timeout"), requests.ConnectionError("down")]
+)
+def test_baifenwei_transport_errors_return_none(monkeypatch, error):
     def fake_get(url, **kwargs):
-        raise requests.Timeout("timeout")
+        raise error
 
     monkeypatch.setattr(fundamentals.requests, "get", fake_get)
 
@@ -667,3 +676,59 @@ def test_baifenwei_missing_near_10_year_label_returns_none(monkeypatch):
     )
 
     assert _baifenwei_index(INDEX_SPECS[1], TRADE_DATE) is None
+
+
+def test_baifenwei_no_metric_cards_returns_none(monkeypatch):
+    _serve_raw(
+        monkeypatch,
+        "<html><body><span>估值数据日：<strong>2026-11-27</strong></span></body></html>",
+    )
+
+    assert _baifenwei_index(INDEX_SPECS[0], TRADE_DATE) is None
+
+
+def test_baifenwei_chart_series_without_metric_cards_is_not_used(monkeypatch):
+    page = (
+        "<html><body><span>估值数据日：<strong>2026-11-27</strong></span>"
+        "<script>var d=[['2026-11-20',13.10,1.30],['2026-11-27',13.61,1.36]];</script>"
+        "</body></html>"
+    )
+    _serve_raw(monkeypatch, page)
+
+    assert _baifenwei_index(INDEX_SPECS[0], TRADE_DATE) is None
+
+
+def test_baifenwei_missing_pe_card_returns_none(monkeypatch):
+    _serve_raw(monkeypatch, _bfw_page("hs300", pe=_OMIT))
+
+    assert _baifenwei_index(INDEX_SPECS[0], TRADE_DATE) is None
+
+
+def test_baifenwei_label_without_adjacent_strong_returns_none(monkeypatch):
+    page = (
+        "<html><body><span>估值数据日：<strong>2026-11-27</strong></span>"
+        '<article class="metric-card"><span class="metric-name">PE · 市盈率</span>'
+        '<div class="metric-value">27.45</div>'
+        '<div class="metric-sub"><span>近 10 年百分位</span></div></article>'
+        '<article class="metric-card"><span class="metric-name">PB · 市净率</span>'
+        '<div class="metric-value">3.86</div>'
+        '<div class="metric-sub"><span>近 10 年百分位</span><strong>17.2%</strong></div>'
+        "</article></body></html>"
+    )
+    _serve_raw(monkeypatch, page)
+
+    assert _baifenwei_index(INDEX_SPECS[1], TRADE_DATE) is None
+
+
+@pytest.mark.parametrize("page_date", ["2026/11/27", "11-27-2026", "20261127"])
+def test_baifenwei_non_iso_date_returns_none(monkeypatch, page_date):
+    _serve_raw(monkeypatch, _bfw_page("hs300", page_date=page_date))
+
+    assert _baifenwei_index(INDEX_SPECS[0], TRADE_DATE) is None
+
+
+@pytest.mark.parametrize("body", ["", "not html at all <", "\x00\x01\x02"])
+def test_baifenwei_empty_or_garbage_body_returns_none(monkeypatch, body):
+    _serve_raw(monkeypatch, body)
+
+    assert _baifenwei_index(INDEX_SPECS[0], TRADE_DATE) is None
