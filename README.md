@@ -104,7 +104,7 @@ mkdir -p data reports       # 分析结果/缓存/断点与 CLI 报告的宿主�
 docker compose up -d --build
 ```
 
-打开 <http://localhost:8501>。状态与日志：
+默认只发布到宿主机回环地址，打开 <http://localhost:8501> 访问；其他主机无法连接。状态与日志：
 
 ```bash
 docker compose ps
@@ -126,7 +126,7 @@ docker compose run --rm web tradingagents --help
 docker compose run --rm web tradingagents deep 600519 2026-11-25
 ```
 
-改端口两种方式：在 `.env` 设 `STREAMLIT_SERVER_PORT=8599`，Compose 会同步容器端口、宿主机映射与健康检查；或只改 `ports` 左侧（如 `"8601:8501"`，容器内仍是 8501）。
+改端口两种方式：在 `.env` 设 `STREAMLIT_SERVER_PORT=8599`，Compose 会同步容器端口、宿主机映射与健康检查；或只改 `ports` 左侧（如 `"8601:8501"`，容器内仍是 8501）。两种方式下宿主机发布地址仍默认是 `127.0.0.1`。需要局域网或公网访问时，在 `.env` 设 `STREAMLIT_BIND_ADDRESS=0.0.0.0`（或宿主机具体网卡地址）；界面无鉴权，放开即对对应网络暴露，需自行加反向代理与认证。
 
 容器内用户是 uid 1000。若宿主机当前用户不是 1000，`./data` 可能不可写：
 
@@ -145,7 +145,8 @@ docker compose build
 说明：
 
 - 镜像不含 `.env`；配置只通过 `env_file` 在运行时注入。
-- 服务监听 `0.0.0.0:8501` 且无鉴权，仅限本机/内网使用；公网部署需自行加反向代理与认证。
+- 宿主机默认只发布到 `127.0.0.1`，仅本机可访问；容器内服务仍监听 `0.0.0.0`（与宿主机发布地址无关）。
+- Web UI 无鉴权。设 `STREAMLIT_BIND_ADDRESS=0.0.0.0` 会把它开放给局域网/公网，公网部署需自行加反向代理与认证。
 - 健康检查走 `/_stcore/health`，`docker compose ps` 显示 `healthy` 即可用。
 
 ## 自选股
