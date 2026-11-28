@@ -1,6 +1,7 @@
 """Unit tests for the multi-period index metrics in ``market.rules``."""
 
 from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -184,6 +185,72 @@ def test_resolve_trade_date_rejects_unpadded_parts(monkeypatch):
         resolve_trade_date("2026-1-1")
     # A fully padded date still normalizes as before.
     assert resolve_trade_date("2026-11-26") == ("2026-11-26", None)
+
+
+_SHANGHAI = timezone(timedelta(hours=8))
+
+
+def _market_window(requested, now):
+    """Import locally so the existing tests still collect while the function is absent."""
+    from market.rules import resolve_market_window
+
+    return resolve_market_window(requested, now=now)
+
+
+def test_market_window_intraday_falls_back(monkeypatch):
+    # 2026-11-25 is a Wednesday; before 15:00 the last completed session is Tuesday.
+    monkeypatch.setattr("market.rules.previous_trade_date", lambda value: "2026-11-24")
+
+    window = _market_window(None, datetime(2026, 11, 25, 10, 0, tzinfo=_SHANGHAI))
+
+    assert window.day == "2026-11-24"
+    assert window.gap is None
+    assert window.cutoff == "2026-11-24 15:00"
+
+
+def test_market_window_after_close_keeps_today(monkeypatch):
+    monkeypatch.setattr("market.rules.previous_trade_date", lambda value: "2026-11-25")
+
+    window = _market_window(None, datetime(2026, 11, 25, 16, 0, tzinfo=_SHANGHAI))
+
+    assert window.day == "2026-11-25"
+    assert window.gap is None
+    assert window.cutoff == "2026-11-25 15:00"
+
+
+def test_market_window_calendar_failure_labels_runtime(monkeypatch):
+    def boom(value):
+        raise RuntimeError("calendar offline")
+
+    monkeypatch.setattr("market.rules.previous_trade_date", boom)
+
+    window = _market_window(None, datetime(2026, 11, 25, 10, 0, tzinfo=_SHANGHAI))
+
+    # No fallback is possible, so the day stays today but the cutoff must be the run time.
+    assert window.day == "2026-11-25"
+    assert "RuntimeError" in window.gap
+    assert window.cutoff == "运行时刻 2026-11-25 10:00"
+
+
+def test_market_window_explicit_history_unchanged(monkeypatch):
+    monkeypatch.setattr("market.rules.previous_trade_date", lambda value: value)
+
+    window = _market_window("2026-11-20", datetime(2026, 11, 25, 10, 0, tzinfo=_SHANGHAI))
+
+    assert window.day == "2026-11-20"
+    assert window.gap is None
+    assert window.cutoff == "2026-11-20 15:00"
+
+
+def test_market_window_weekend_falls_back(monkeypatch):
+    # 2026-11-28 is a Saturday; the most recent session is Friday.
+    monkeypatch.setattr("market.rules.previous_trade_date", lambda value: "2026-11-27")
+
+    window = _market_window(None, datetime(2026, 11, 28, 10, 0, tzinfo=_SHANGHAI))
+
+    assert window.day == "2026-11-27"
+    assert window.gap is None
+    assert window.cutoff == "2026-11-27 15:00"
 
 
 def test_broken_rate_normal():
