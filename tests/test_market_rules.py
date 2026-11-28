@@ -8,6 +8,7 @@ from market.fetch import IndexQuote, IndexSpec, Industries, NewsResult, Sentimen
 from market.fundamentals import (
     Earnings,
     Fundamentals,
+    IndexValuation,
     MacroBlock,
     MacroItem,
     Margin,
@@ -211,6 +212,17 @@ def _full_gap_inputs():
     return indices, turnover, sentiment, industries, NewsResult([])
 
 
+def _index_valuations() -> list[IndexValuation]:
+    """All five broad indices present, matching ``INDEX_SPECS`` order."""
+    return [
+        IndexValuation("沪深300", "SH000300", 13.6, 70.0, 1.4, 25.0, "2026-11-26", "源"),
+        IndexValuation("创业板", "SZ399006", 42.2, 68.4, 5.3, 40.2, "2026-11-26", "源"),
+        IndexValuation("科创50", "SH000688", 88.4, 82.6, 6.1, 62.8, "2026-11-26", "源"),
+        IndexValuation("中证500", "SH000905", 28.7, 55.3, 2.1, 44.1, "2026-11-26", "源"),
+        IndexValuation("中证1000", "SH000852", 41.9, 61.7, 2.4, 47.9, "2026-11-26", "源"),
+    ]
+
+
 def test_collect_gaps_empty_when_all_present():
     assert collect_gaps(*_full_gap_inputs()) == []
 
@@ -297,7 +309,7 @@ def test_collect_gaps_lists_missing_macro_items_and_valuation_sources():
                 MacroItem("PPI", None, "%", None, "源"),
             ]
         ),
-        valuation=Valuation(pe_ttm=None),
+        valuation=Valuation(pe_ttm=None, indexes=_index_valuations()),
         margin=Margin(sh=100.0, total=None),
         earnings=Earnings(net_profit_yoy=None),
     )
@@ -311,20 +323,25 @@ def test_collect_gaps_lists_missing_macro_items_and_valuation_sources():
     ]
 
 
+def _present_valuation() -> Valuation:
+    return Valuation(
+        pe_ttm=12.6,
+        pe_percentile=45.2,
+        official_pe1=13.6,
+        official_pe2=14.6,
+        official_div1=2.6,
+        official_div2=2.5,
+        indexes=_index_valuations(),
+    )
+
+
 def _present_fundamentals(**overrides):
     """Every block usable, so only the overridden block contributes gaps."""
     blocks = dict(
         macro=MacroBlock(
             items=[MacroItem("CPI", 0.3, "%", "2026年10月", "源")]
         ),
-        valuation=Valuation(
-            pe_ttm=12.6,
-            pe_percentile=45.2,
-            official_pe1=13.6,
-            official_pe2=14.6,
-            official_div1=2.6,
-            official_div2=2.5,
-        ),
+        valuation=_present_valuation(),
         margin=Margin(sh=100.0, sz=50.0, total=150.0, change_5d=10.0),
         earnings=Earnings(net_profit_yoy=5.0, revenue_yoy=3.0, coverage=0.9),
     )
@@ -341,12 +358,49 @@ def test_collect_gaps_lists_partial_official_valuation_fields():
             official_pe2=None,
             official_div1=None,
             official_div2=2.5,
+            indexes=_index_valuations(),
         )
     )
 
     assert collect_gaps(**_gap_args(factors)) == [
         "valuation: 中证官方估值部分缺失（市盈率2、股息率1）",
     ]
+
+
+def test_collect_gaps_reports_single_missing_index():
+    valuation = _present_valuation()
+    valuation.indexes = [
+        record for record in valuation.indexes if record.name != "创业板"
+    ]
+
+    assert collect_gaps(**_gap_args(_present_fundamentals(valuation=valuation))) == [
+        "valuation: 创业板估值不可用",
+    ]
+
+
+def test_collect_gaps_reports_all_missing_indexes_in_order():
+    valuation = _present_valuation()
+    valuation.indexes = []
+
+    assert collect_gaps(**_gap_args(_present_fundamentals(valuation=valuation))) == [
+        "valuation: 沪深300估值不可用",
+        "valuation: 创业板估值不可用",
+        "valuation: 科创50估值不可用",
+        "valuation: 中证500估值不可用",
+        "valuation: 中证1000估值不可用",
+    ]
+
+
+def test_collect_gaps_valuation_none_has_no_per_index_gaps():
+    factors = _present_fundamentals(valuation=None)
+
+    assert collect_gaps(**_gap_args(factors)) == ["valuation: 估值数据不可用"]
+
+
+def test_collect_gaps_all_indexes_present_has_no_index_gap():
+    factors = _present_fundamentals()
+
+    assert collect_gaps(**_gap_args(factors)) == []
 
 
 def test_collect_gaps_reports_missing_five_day_margin_change():

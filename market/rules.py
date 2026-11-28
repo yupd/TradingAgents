@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from market.fetch import IndexQuote, IndexSpec, Industries, NewsResult, Sentiment, Turnover
-from market.fundamentals import MARGIN_STALE_DAYS
+from market.fundamentals import INDEX_SPECS, MARGIN_STALE_DAYS
 from tradingagents.dataflows.vendors.a_share.calendar import previous_trade_date
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
@@ -154,6 +154,12 @@ def _fundamental_gaps(fundamentals: Fundamentals) -> list[str]:
             gaps.append(
                 f"valuation: 中证官方估值部分缺失（{'、'.join(missing)}）"
             )
+        present = {index.name for index in valuation.indexes}
+        gaps.extend(
+            f"valuation: {spec.name}估值不可用"
+            for spec in INDEX_SPECS
+            if spec.name not in present
+        )
 
     margin = fundamentals.margin
     if margin is None or (margin.total is None and margin.sh is None and margin.sz is None):
