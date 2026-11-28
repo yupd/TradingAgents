@@ -9,8 +9,11 @@ from typer.testing import CliRunner
 import cli.main as m
 from market.fetch import Industries, IndexQuote, MarketNews, NewsResult, Sentiment, Turnover
 from market.fundamentals import (
+    BFW_SOURCE,
+    DJ_SOURCE,
     Earnings,
     Fundamentals,
+    IndexValuation,
     MacroBlock,
     MacroItem,
     Margin,
@@ -48,6 +51,23 @@ def _fundamentals() -> Fundamentals:
             pe_date="2026-11-01",
             official_pe1=13.61,
             source="乐咕乐股（akshare） / 中证指数（akshare）",
+            indexes=[
+                IndexValuation(
+                    "沪深300", "SH000300", 13.64, 70.1, 1.36, 25.5, DAY, DJ_SOURCE
+                ),
+                IndexValuation(
+                    "创业板", "SZ399006", 42.18, 68.4, 5.27, 40.2, DAY, DJ_SOURCE
+                ),
+                IndexValuation(
+                    "科创50", "SH000688", 88.35, 82.6, 6.12, 62.8, DAY, DJ_SOURCE
+                ),
+                IndexValuation(
+                    "中证500", "SH000905", 28.74, 55.3, 2.06, 44.1, DAY, BFW_SOURCE
+                ),
+                IndexValuation(
+                    "中证1000", "SH000852", 41.92, 61.7, 2.41, 47.9, DAY, DJ_SOURCE
+                ),
+            ],
         ),
         margin=Margin(
             sh=100.0,
@@ -163,6 +183,16 @@ def test_enabled_latest_writes_four_sections_before_the_gaps(monkeypatch, tmp_pa
     assert _headings(text) == list(HEADINGS)
     assert "第三方 PE(TTM)：12.60" in text
     assert "净利润同比：+100.00%" in text
+    assert "多指数估值（蛋卷口径）" in text
+    for name in ("沪深300", "创业板", "科创50", "中证500", "中证1000"):
+        assert f"| {name} |" in text
+    assert "| 指数 | PE | PE 分位 | PB | PB 分位 | 数据日期 | 来源 |" in text
+    assert DJ_SOURCE in text
+    assert BFW_SOURCE in text
+    assert (
+        "说明：分位为近 10 年（不足 10 年用全部历史）；"
+        "蛋卷口径与上方乐咕口径不同，不可横向比较。"
+    ) in text
 
 
 @pytest.mark.unit
@@ -186,6 +216,7 @@ def test_historical_date_makes_no_fundamental_request(monkeypatch, tmp_path):
     for heading in ("宏观基本面", "估值水平", "资金面", "盈利概览"):
         assert f"## {heading}\n\n历史模式不可用" in text
     assert "12.60" not in text
+    assert "多指数估值" not in text
 
 
 @pytest.mark.unit
@@ -243,6 +274,12 @@ def test_every_akshare_leaf_failing_degrades_to_data_unavailable(monkeypatch, tm
 
     for name in AKSHARE_LEAVES:
         monkeypatch.setattr(ak, name, boom)
+    monkeypatch.setattr(
+        "market.fundamentals._danjuan_index", lambda spec, trade_date: None
+    )
+    monkeypatch.setattr(
+        "market.fundamentals._baifenwei_index", lambda spec, trade_date: None
+    )
     monkeypatch.chdir(tmp_path)
 
     result = CliRunner().invoke(m.app, ["market", "--fundamentals"])
