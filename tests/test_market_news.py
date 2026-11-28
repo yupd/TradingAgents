@@ -156,3 +156,34 @@ def test_fetch_news_records_gap_when_all_items_are_noise(monkeypatch):
 
     assert result.items == []
     assert result.gap == "news: 无市场相关条目"
+
+
+def _flash_lines(count: int, market_at: int | None = None) -> list[str]:
+    """Vendor markdown with ``count`` noise flashes; ``market_at`` (1-based) is the market one."""
+    lines = [f"- [东财快讯] 2026-11-26 10:00 普通公司新闻 {n}" for n in range(1, count + 1)]
+    if market_at is not None:
+        lines[market_at - 1] = "- [东财快讯] 2026-11-26 10:00 央行开展逆回购操作"
+    return lines
+
+
+def test_fetch_news_filters_before_truncating(monkeypatch):
+    def fake(curr_date, look_back_days=7, limit=10):
+        # 模拟 vendor 的 head(limit)：只在源端先截断，关键词过滤在 fetch_news 之后。
+        return "\n".join(_flash_lines(200, market_at=15)[:limit])
+
+    monkeypatch.setattr(fetch, "get_global_news", fake)
+    result = fetch.fetch_news("2026-11-26", limit=10)
+
+    assert [item.title for item in result.items] == ["央行开展逆回购操作"]
+    assert len(result.items) <= 10
+
+
+def test_fetch_news_gap_when_no_keyword_matches(monkeypatch):
+    def fake(curr_date, look_back_days=7, limit=10):
+        return "\n".join(_flash_lines(200)[:limit])
+
+    monkeypatch.setattr(fetch, "get_global_news", fake)
+    result = fetch.fetch_news("2026-11-26", limit=10)
+
+    assert result.items == []
+    assert result.gap == "news: 无市场相关条目"
