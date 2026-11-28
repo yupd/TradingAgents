@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 logger = logging.getLogger(__name__)
@@ -37,6 +37,18 @@ class MacroBlock:
 
 
 @dataclass
+class IndexValuation:
+    name: str
+    code: str
+    pe: float | None = None
+    pe_percentile: float | None = None
+    pb: float | None = None
+    pb_percentile: float | None = None
+    as_of: str | None = None
+    source: str | None = None
+
+
+@dataclass
 class Valuation:
     pe_ttm: float | None = None
     pe_percentile: float | None = None
@@ -49,6 +61,7 @@ class Valuation:
     official_date: str | None = None
     source: str | None = None
     note: str | None = None
+    indexes: list[IndexValuation] = field(default_factory=list)
 
 
 @dataclass

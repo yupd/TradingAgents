@@ -5,6 +5,12 @@ from market.fundamentals import OFFICIAL_SOURCE, PE_SOURCE, Valuation, fetch_val
 TRADE_DATE = "2026-11-27"
 
 
+def test_valuation_indexes_default_to_isolated_empty_lists():
+    first, second = Valuation(), Valuation()
+    assert first.indexes == []
+    assert first.indexes is not second.indexes
+
+
 def _monthly(values, end="2026-11-01"):
     return pd.DataFrame(
         {
