@@ -196,9 +196,9 @@ def _baifenwei_index(spec: IndexSpec, trade_date: str) -> IndexValuation | None:
         for card in soup.find_all("article", class_="metric-card"):
             label_tag = card.find("span", class_="metric-name")
             label = label_tag.get_text(strip=True) if label_tag else ""
-            if label.startswith("PE"):
+            if label.startswith("PE "):
                 key = "pe"
-            elif label.startswith("PB"):
+            elif label.startswith("PB "):
                 key = "pb"
             else:
                 continue

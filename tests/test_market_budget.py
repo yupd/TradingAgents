@@ -194,11 +194,20 @@ def test_normal_market_run_uses_exactly_twelve_source_calls(monkeypatch, tmp_pat
     _install_technical(monkeypatch, calls)
     _install_llm(monkeypatch, tmp_path)
 
+    def forbidden_index_valuation(spec, trade_date):
+        calls.append("index_valuation")
+        raise AssertionError("default run must not fetch index valuations")
+
+    monkeypatch.setattr(
+        "market.fundamentals._danjuan_index", forbidden_index_valuation
+    )
+
     from cli.run import run_market
 
     path = run_market(DAY)
 
     assert path.exists()
+    assert "index_valuation" not in calls
     assert calls.count("fetch_index_bars") == 5
     assert len(calls) == 12
     assert len(calls) <= 12

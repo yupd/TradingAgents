@@ -693,6 +693,22 @@ def test_baifenwei_page_parses_each_index(monkeypatch, spec):
     assert len(calls) == 1
 
 
+def test_baifenwei_peg_card_does_not_overwrite_pe(monkeypatch):
+    page = _bfw_page("hs300").replace(
+        "</body>",
+        _metric_card("PEG · 市盈率相对盈利增长", 99.99, "99.9%") + "</body>",
+    )
+    _serve_raw(monkeypatch, page)
+
+    record = _baifenwei_index(INDEX_SPECS[0], TRADE_DATE)
+
+    expected = BFW_VALUES["hs300"]
+    assert record is not None
+    assert record.pe == expected["pe"]
+    assert record.pe_percentile == expected["pe_pct"]
+    assert record.pb == expected["pb"]
+
+
 def test_baifenwei_page_date_after_trade_date_returns_none(monkeypatch):
     monkeypatch.setattr(
         fundamentals.requests,
