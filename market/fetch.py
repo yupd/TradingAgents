@@ -447,6 +447,42 @@ def _parse_global_news(text: str) -> list[MarketNews]:
     ]
 
 
+# 只保留与 A 股/港股、宏观、监管、主要产业相关的快讯；ASCII 关键词按大写匹配。
+NEWS_KEYWORDS = (
+    # A 股与港股
+    "A股", "沪指", "上证", "深成", "深证", "创业板", "科创", "北证", "两市",
+    "大盘", "指数", "成交额", "涨停", "跌停", "港股", "恒生", "恒指", "中概",
+    # 监管与政策
+    "央行", "人民银行", "证监会", "金融监管", "财政部", "发改委", "工信部",
+    "国务院", "国常会", "政治局", "中央经济工作会议", "十五五", "稳市",
+    "平准基金", "国家队", "汇金",
+    # 货币与流动性
+    "降准", "降息", "加息", "LPR", "MLF", "逆回购", "流动性", "社融", "信贷",
+    # 宏观数据
+    "CPI", "PPI", "PMI", "GDP", "社零", "固投", "出口", "人民币", "汇率",
+    # 外部风险
+    "美联储", "美债", "美元", "纳斯达克", "标普", "道指", "费半", "中美", "美国", "中国",
+    # 产业与龙头
+    "半导体", "芯片", "算力", "人工智能", "AI", "机器人", "华为", "英伟达", "台积电",
+    "新能源", "光伏", "储能", "锂电", "汽车", "医药", "创新药",
+    "腾讯", "阿里", "茅台", "宁德时代", "比亚迪", "中芯", "寒武纪",
+    # 市场制度与资金
+    "IPO", "回购", "增持", "减持", "退市", "分红", "融资", "两融", "ETF",
+    "公募", "私募", "保险", "社保", "养老金", "房地产", "地产", "消费",
+)
+
+
+def filter_market_news(items: list[MarketNews]) -> list[MarketNews]:
+    """Keep titles containing a market keyword; ASCII keywords are case-insensitive."""
+    kept = []
+    for item in items:
+        title = item.title
+        upper = title.upper()
+        if any(keyword in title or keyword in upper for keyword in NEWS_KEYWORDS):
+            kept.append(item)
+    return kept
+
+
 def fetch_news(trade_date: str, look_back_days: int = 7, limit: int = 10) -> NewsResult:
     """Market-wide flashes; a failed or empty source is recorded as a gap, never raised."""
     try:
@@ -454,8 +490,8 @@ def fetch_news(trade_date: str, look_back_days: int = 7, limit: int = 10) -> New
     except Exception as exc:
         logger.debug("news fetch failed: %s", exc)
         return NewsResult([], gap=f"news: {type(exc).__name__}: {exc}")
-    items = _parse_global_news(text)
-    return NewsResult(items) if items else NewsResult([], gap="news: 无可用条目")
+    items = filter_market_news(_parse_global_news(text))
+    return NewsResult(items) if items else NewsResult([], gap="news: 无市场相关条目")
 
 
 @dataclass
