@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import io
+
 import pandas as pd
 
 from . import http
@@ -84,8 +86,11 @@ def _sina_bars(sym: AStockSymbol, start: str, end: str) -> pd.DataFrame:
     )
     text = response.text
     payload = text[text.index("(") + 1:text.rindex(")")]
-    frame = pd.read_json(payload)
-    return frame.rename(columns={"day": "date"})[["date", "open", "high", "low", "close", "volume"]]
+    frame = pd.read_json(io.StringIO(payload))
+    frame = frame.rename(columns={"day": "date"})
+    # Sina reports volume in shares; the canonical unit is lots (手).
+    frame["volume"] = frame["volume"] / 100
+    return frame[["date", "open", "high", "low", "close", "volume"]]
 
 
 def get_daily_bars(sym: AStockSymbol, start: str, end: str) -> list[DailyBar]:
