@@ -232,7 +232,7 @@ def _valuation(fundamentals) -> str:
             valuation.official_div1,
             valuation.official_div2,
         )
-    ):
+    ) and not valuation.indexes:
         return _UNAVAILABLE
     percentile = _rate(valuation.pe_percentile)
     if valuation.percentile_window is not None:
@@ -260,6 +260,28 @@ def _valuation(fundamentals) -> str:
         lines.append("口径以中证指数为准")
     if valuation.note:
         lines.append(f"说明：{valuation.note}")
+    if valuation.indexes:
+        rows = [
+            (
+                index.name,
+                _num(index.pe),
+                _rate(index.pe_percentile),
+                _num(index.pb),
+                _rate(index.pb_percentile),
+                index.as_of or _NA,
+                index.source or _NA,
+            )
+            for index in valuation.indexes
+        ]
+        lines += [
+            "",
+            "多指数估值（蛋卷口径）：",
+            "",
+            _table(("指数", "PE", "PE 分位", "PB", "PB 分位", "数据日期", "来源"), rows),
+            "",
+            "说明：分位为近 10 年（不足 10 年用全部历史）；"
+            "蛋卷口径与上方乐咕口径不同，不可横向比较。",
+        ]
     return "\n".join(lines)
 
 

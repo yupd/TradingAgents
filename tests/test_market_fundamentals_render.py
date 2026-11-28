@@ -4,6 +4,7 @@ from market.fetch import Industries, MarketFacts
 from market.fundamentals import (
     Earnings,
     Fundamentals,
+    IndexValuation,
     MacroBlock,
     MacroItem,
     Margin,
@@ -17,6 +18,13 @@ DAY = "2026-11-26"
 MACRO_SOURCE = "akshare 宏观接口（东方财富/国家统计局口径）"
 PE_SOURCE = "乐咕乐股（akshare）"
 OFFICIAL_SOURCE = "中证指数（akshare）"
+DJ_SOURCE = "蛋卷基金（danjuanapp）"
+BFW_SOURCE = "百分位（baifenwei）"
+INDEX_DATE = "2026-11-27"
+INDEX_NOTE = (
+    "说明：分位为近 10 年（不足 10 年用全部历史）；"
+    "蛋卷口径与上方乐咕口径不同，不可横向比较。"
+)
 
 
 def _macro() -> MacroBlock:
@@ -45,6 +53,22 @@ def _valuation() -> Valuation:
         official_date="2026-11-26",
         source=f"{PE_SOURCE} / {OFFICIAL_SOURCE}",
     )
+
+
+def _indexes() -> list[IndexValuation]:
+    return [
+        IndexValuation("沪深300", "SH000300", 13.64, 70.1, 1.36, 25.5, INDEX_DATE, DJ_SOURCE),
+        IndexValuation("创业板", "SZ399006", 42.18, 68.4, 5.27, 40.2, INDEX_DATE, DJ_SOURCE),
+        IndexValuation("科创50", "SH000688", 88.35, 82.6, 6.12, 62.8, INDEX_DATE, DJ_SOURCE),
+        IndexValuation("中证500", "SH000905", 28.74, 55.3, 2.06, 44.1, INDEX_DATE, BFW_SOURCE),
+        IndexValuation("中证1000", "SH000852", 41.92, 61.7, 2.41, 47.9, INDEX_DATE, DJ_SOURCE),
+    ]
+
+
+def _valuation_with_indexes(indexes=None) -> Valuation:
+    valuation = _valuation()
+    valuation.indexes = _indexes() if indexes is None else indexes
+    return valuation
 
 
 def _margin() -> Margin:
@@ -177,6 +201,83 @@ def test_valuation_without_official_values_names_only_the_third_party_source():
     assert "官方日期：不可用" in section
     gaps = collect_gaps([], None, None, None, None, fundamentals=factors)
     assert "valuation: 中证官方估值不可用" in gaps
+
+
+def _table_rows(section: str) -> list[str]:
+    return [
+        line
+        for line in section.splitlines()
+        if line.startswith("| ") and not line.startswith("| ---")
+    ]
+
+
+def test_valuation_index_table_renders_five_rows_in_order():
+    factors = Fundamentals(valuation=_valuation_with_indexes())
+
+    section = _section(render_market(_facts(factors), Summary("")), "估值水平")
+
+    assert "多指数估值（蛋卷口径）：" in section
+    assert "| 指数 | PE | PE 分位 | PB | PB 分位 | 数据日期 | 来源 |" in section
+    rows = _table_rows(section)[1:]  # drop the header row
+    assert [row.split(" | ")[0] for row in rows] == [
+        "| 沪深300",
+        "| 创业板",
+        "| 科创50",
+        "| 中证500",
+        "| 中证1000",
+    ]
+    assert (
+        f"| 沪深300 | 13.64 | 70.1% | 1.36 | 25.5% | {INDEX_DATE} | {DJ_SOURCE} |"
+        in section
+    )
+    assert (
+        f"| 中证500 | 28.74 | 55.3% | 2.06 | 44.1% | {INDEX_DATE} | {BFW_SOURCE} |"
+        in section
+    )
+    assert INDEX_NOTE in section
+
+
+def test_valuation_index_table_skips_a_missing_index():
+    factors = Fundamentals(valuation=_valuation_with_indexes(_indexes()[:4]))
+
+    section = _section(render_market(_facts(factors), Summary("")), "估值水平")
+
+    rows = _table_rows(section)[1:]
+    assert len(rows) == 4
+    assert "中证1000" not in section
+    assert INDEX_NOTE in section
+
+
+def test_valuation_with_only_index_rows_still_renders():
+    valuation = Valuation(indexes=_indexes())
+    factors = Fundamentals(valuation=valuation)
+
+    section = _section(render_market(_facts(factors), Summary("")), "估值水平")
+
+    assert "多指数估值" in section
+    assert "数据不可用" not in section
+    assert "| 沪深300 | 13.64 | 70.1% | 1.36 | 25.5% |" in section
+
+
+def test_valuation_marks_hs300_block_and_index_row_as_not_comparable():
+    factors = Fundamentals(valuation=_valuation_with_indexes())
+
+    section = _section(render_market(_facts(factors), Summary("")), "估值水平")
+
+    assert "第三方 PE(TTM)：12.60" in section
+    assert "| 沪深300 | 13.64 |" in section
+    assert "不可横向比较" in INDEX_NOTE
+    assert INDEX_NOTE in section
+
+
+def test_valuation_without_indexes_renders_no_index_table():
+    section = _section(
+        render_market(_facts(Fundamentals(valuation=_valuation())), Summary("")),
+        "估值水平",
+    )
+
+    assert "多指数估值" not in section
+    assert INDEX_NOTE not in section
 
 
 def test_margin_single_market_leaves_total_and_change_unavailable():
