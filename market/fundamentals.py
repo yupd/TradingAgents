@@ -204,7 +204,15 @@ def _baifenwei_index(spec: IndexSpec, trade_date: str) -> IndexValuation | None:
                 continue
             value_tag = card.find("div", class_="metric-value")
             sub_tag = card.find("div", class_="metric-sub")
-            percentile_tag = sub_tag.find("strong") if sub_tag else None
+            percentile_tag = None
+            if sub_tag:
+                label_tag = sub_tag.find(
+                    "span", string=lambda text: text and "近 10 年百分位" in text
+                )
+                if label_tag is not None:
+                    percentile_tag = label_tag.find_next_sibling(
+                        "strong"
+                    ) or label_tag.find("strong")
             value = _num(value_tag.get_text(strip=True)) if value_tag else None
             percentile = (
                 _num(percentile_tag.get_text(strip=True).rstrip("%"))

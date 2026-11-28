@@ -621,3 +621,49 @@ def test_baifenwei_timeout_returns_none(monkeypatch):
     monkeypatch.setattr(fundamentals.requests, "get", fake_get)
 
     assert _baifenwei_index(INDEX_SPECS[0], TRADE_DATE) is None
+
+
+def test_baifenwei_picks_near_10_year_percentile_not_first_strong(monkeypatch):
+    page = (
+        "<html><body><span>估值数据日：<strong>2026-11-27</strong></span>"
+        '<article class="metric-card">'
+        '<span class="metric-name">PE · 市盈率</span>'
+        '<div class="metric-value">27.45</div>'
+        '<div class="metric-sub"><span>近 5 年百分位</span><strong>99.9%</strong>'
+        "<span>近 10 年百分位</span><strong>6.8%</strong></div>"
+        "</article>"
+        '<article class="metric-card">'
+        '<span class="metric-name">PB · 市净率</span>'
+        '<div class="metric-value">3.86</div>'
+        '<div class="metric-sub"><span>近 10 年百分位</span><strong>17.2%</strong></div>'
+        "</article>"
+        "</body></html>"
+    )
+    monkeypatch.setattr(
+        fundamentals.requests, "get", lambda url, **kwargs: _PageResponse(page)
+    )
+
+    record = _baifenwei_index(INDEX_SPECS[1], TRADE_DATE)
+
+    assert record is not None
+    assert record.pe_percentile == 6.8  # not the 近 5 年 decoy 99.9
+    assert record.pb_percentile == 17.2
+
+
+def test_baifenwei_missing_near_10_year_label_returns_none(monkeypatch):
+    page = (
+        "<html><body><span>估值数据日：<strong>2026-11-27</strong></span>"
+        '<article class="metric-card"><span class="metric-name">PE · 市盈率</span>'
+        '<div class="metric-value">27.45</div>'
+        '<div class="metric-sub"><span>近 5 年百分位</span><strong>99.9%</strong></div>'
+        "</article>"
+        '<article class="metric-card"><span class="metric-name">PB · 市净率</span>'
+        '<div class="metric-value">3.86</div>'
+        '<div class="metric-sub"><span>近 10 年百分位</span><strong>17.2%</strong></div>'
+        "</article></body></html>"
+    )
+    monkeypatch.setattr(
+        fundamentals.requests, "get", lambda url, **kwargs: _PageResponse(page)
+    )
+
+    assert _baifenwei_index(INDEX_SPECS[1], TRADE_DATE) is None
