@@ -452,11 +452,16 @@ def fetch_valuation(trade_date: str) -> Valuation:
         ) = official
         sources.append(OFFICIAL_SOURCE)
     for spec in INDEX_SPECS:
+        record = None
         try:
             record = _danjuan_index(spec, trade_date)
         except Exception:
             logger.warning("指数估值取数失败: %s", spec.name, exc_info=True)
-            continue
+        if record is None:
+            try:
+                record = _baifenwei_index(spec, trade_date)
+            except Exception:
+                logger.warning("百分位指数估值取数失败: %s", spec.name, exc_info=True)
         if record is not None:
             valuation.indexes.append(record)
     valuation.source = " / ".join(sources) if sources else None

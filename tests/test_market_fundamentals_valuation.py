@@ -48,7 +48,7 @@ def _monthly(values, end="2026-11-01"):
     )
 
 
-def _install(monkeypatch, history=None, official=None, indexes=None):
+def _install(monkeypatch, history=None, official=None, indexes=None, fallbacks=None):
     import akshare as ak
 
     monkeypatch.setattr(
@@ -58,6 +58,11 @@ def _install(monkeypatch, history=None, official=None, indexes=None):
         fundamentals,
         "_danjuan_index",
         indexes or (lambda spec, trade_date: None),
+    )
+    monkeypatch.setattr(
+        fundamentals,
+        "_baifenwei_index",
+        fallbacks or (lambda spec, trade_date: None),
     )
     if official is None:
         official = lambda symbol: pd.DataFrame(
@@ -481,6 +486,134 @@ BFW_VALUES = {
     "zz500": {"pe": 26.96, "pe_pct": 56.9, "pb": 1.97, "pb_pct": 53.6},
     "zz1000": {"pe": 35.71, "pe_pct": 33.3, "pb": 1.88, "pb_pct": 8.3},
 }
+
+
+def _bfw_records():
+    return [
+        IndexValuation(
+            name=spec.name,
+            code=spec.code,
+            pe=BFW_VALUES[spec.baifenwei_slug]["pe"],
+            pe_percentile=BFW_VALUES[spec.baifenwei_slug]["pe_pct"],
+            pb=BFW_VALUES[spec.baifenwei_slug]["pb"],
+            pb_percentile=BFW_VALUES[spec.baifenwei_slug]["pb_pct"],
+            as_of="2026-11-27",
+            source=BFW_SOURCE,
+        )
+        for spec in INDEX_SPECS
+    ]
+
+
+def test_fetch_valuation_primary_success_does_not_call_fallback(monkeypatch):
+    records = _records()
+    by_code = {record.code: record for record in records}
+    fallback_calls = []
+
+    def fallback(spec, trade_date):
+        fallback_calls.append(spec.code)
+        return None
+
+    _install(
+        monkeypatch,
+        indexes=lambda spec, trade_date: by_code[spec.code],
+        fallbacks=fallback,
+    )
+
+    valuation = fetch_valuation(TRADE_DATE)
+
+    assert valuation.indexes == records
+    assert fallback_calls == []
+
+
+def test_fetch_valuation_uses_fallback_when_primary_returns_none(monkeypatch):
+    records = _bfw_records()
+    by_code = {record.code: record for record in records}
+    _install(
+        monkeypatch, fallbacks=lambda spec, trade_date: by_code[spec.code]
+    )
+
+    valuation = fetch_valuation(TRADE_DATE)
+
+    assert valuation.indexes == records
+    assert [record.source for record in valuation.indexes] == [
+        BFW_SOURCE for _ in INDEX_SPECS
+    ]
+
+
+def test_fetch_valuation_primary_exception_still_uses_fallback(monkeypatch):
+    records = _bfw_records()
+    by_code = {record.code: record for record in records}
+
+    def boom(spec, trade_date):
+        raise RuntimeError("danjuan down")
+
+    _install(
+        monkeypatch,
+        indexes=boom,
+        fallbacks=lambda spec, trade_date: by_code[spec.code],
+    )
+
+    valuation = fetch_valuation(TRADE_DATE)
+
+    assert valuation.indexes == records
+
+
+def test_fetch_valuation_both_sources_failing_drops_the_index(monkeypatch):
+    by_code = {record.code: record for record in _bfw_records()}
+    lost = INDEX_SPECS[2].code
+
+    def boom(spec, trade_date):
+        raise RuntimeError("danjuan down")
+
+    def fallback(spec, trade_date):
+        return None if spec.code == lost else by_code[spec.code]
+
+    _install(monkeypatch, indexes=boom, fallbacks=fallback)
+
+    valuation = fetch_valuation(TRADE_DATE)
+
+    assert [record.code for record in valuation.indexes] == [
+        spec.code for spec in INDEX_SPECS if spec.code != lost
+    ]
+
+
+def test_fetch_valuation_mixed_sources_keep_spec_order(monkeypatch):
+    dj_by_code = {record.code: record for record in _records()}
+    bfw_by_code = {record.code: record for record in _bfw_records()}
+    fallback_codes = {INDEX_SPECS[1].code, INDEX_SPECS[3].code}
+
+    def primary(spec, trade_date):
+        return None if spec.code in fallback_codes else dj_by_code[spec.code]
+
+    def fallback(spec, trade_date):
+        return bfw_by_code[spec.code]
+
+    _install(monkeypatch, indexes=primary, fallbacks=fallback)
+
+    valuation = fetch_valuation(TRADE_DATE)
+
+    assert [record.code for record in valuation.indexes] == [
+        spec.code for spec in INDEX_SPECS
+    ]
+    assert [record.source for record in valuation.indexes] == [
+        BFW_SOURCE if spec.code in fallback_codes else DJ_SOURCE
+        for spec in INDEX_SPECS
+    ]
+
+
+def test_fallback_records_leave_hs300_fields_and_source_unchanged(monkeypatch):
+    by_code = {record.code: record for record in _bfw_records()}
+    _install(
+        monkeypatch, fallbacks=lambda spec, trade_date: by_code[spec.code]
+    )
+
+    valuation = fetch_valuation(TRADE_DATE)
+
+    assert len(valuation.indexes) == len(INDEX_SPECS)
+    assert valuation.pe_ttm == 149.0
+    assert valuation.pe_percentile == 100.0
+    assert valuation.official_pe1 == 13.61
+    assert valuation.source == f"{PE_SOURCE} / {OFFICIAL_SOURCE}"
 _OMIT = object()
 
 

@@ -23,6 +23,9 @@ def _offline_danjuan(monkeypatch):
     monkeypatch.setattr(
         "market.fundamentals._danjuan_index", lambda spec, trade_date: None
     )
+    monkeypatch.setattr(
+        "market.fundamentals._baifenwei_index", lambda spec, trade_date: None
+    )
 
 
 def _blocks():
