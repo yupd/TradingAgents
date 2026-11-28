@@ -18,6 +18,7 @@ from tradingagents.dataflows.vendors.a_share.news import (
 )
 from tradingagents.dataflows.vendors.a_share.quotes import (
     get_indicators as get_ashare_indicators,
+    get_kline_patterns as get_ashare_kline_patterns,
     get_stock_data as get_ashare_stock_data,
     get_verified_market_snapshot as get_ashare_snapshot,
 )
@@ -60,7 +61,8 @@ TOOLS_CATEGORIES = {
     "technical_indicators": {
         "description": "Technical analysis indicators",
         "tools": [
-            "get_indicators"
+            "get_indicators",
+            "get_kline_patterns",
         ]
     },
     "fundamental_data": {
@@ -117,6 +119,9 @@ VENDOR_METHODS = {
     "get_indicators": {
         "a_share": get_ashare_indicators,
         "yfinance": get_stock_stats_indicators_window,
+    },
+    "get_kline_patterns": {
+        "a_share": get_ashare_kline_patterns,
     },
     # fundamental_data
     "get_fundamentals": {

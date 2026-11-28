@@ -69,3 +69,62 @@ def test_em_get_retries_three_times(monkeypatch):
     with pytest.raises(RuntimeError):
         h.em_get("https://push2.eastmoney.com/api/qt/stock/get")
     assert calls["n"] == 3
+
+
+def test_kline_patterns_uses_local_bars(monkeypatch):
+    monkeypatch.setattr(q, "_mootdx_bars", lambda *a: BARS)
+    text = q.get_kline_patterns("600519", "2026-11-21")
+    assert "K线形态" in text
+    assert "Source: mootdx" in text and "As of: 2026-11-21" in text
+
+
+def test_kline_patterns_all_sources_fail(monkeypatch):
+    for name in ("_mootdx_bars", "_em_bars", "_tencent_bars", "_sina_bars"):
+        monkeypatch.setattr(q, name, lambda *a: (_ for _ in ()).throw(RuntimeError("down")))
+    text = q.get_kline_patterns("600519", "2026-11-21")
+    assert text.startswith("DATA_UNAVAILABLE")
+
+
+def test_kline_patterns_historical_never_reads_live(monkeypatch):
+    monkeypatch.setattr(
+        q, "get_snapshot", lambda *a: (_ for _ in ()).throw(AssertionError("live used")))
+    monkeypatch.setattr(q, "_mootdx_bars", lambda *a: BARS)
+    text = q.get_kline_patterns("600519", "2026-11-21")
+    assert "Source: mootdx" in text
+
+
+def test_kline_patterns_excludes_bars_after_curr_date(monkeypatch):
+    future = pd.concat([BARS, pd.DataFrame({
+        "date": ["2026-11-24"], "open": [10.6], "high": [11.0],
+        "low": [10.5], "close": [10.9], "volume": [1500]})], ignore_index=True)
+    monkeypatch.setattr(q, "_mootdx_bars", lambda *a: future)
+    text = q.get_kline_patterns("600519", "2026-11-21")
+    assert "2026-11-24" not in text
+    assert "As of: 2026-11-21" in text
+
+
+def test_kline_patterns_keeps_trend_context_before_window(monkeypatch):
+    rows = []
+    for i, close in enumerate([10.0, 9.8, 9.6, 9.4, 9.2, 9.0]):
+        rows.append({"date": f"2026-11-{i + 1:02d}", "open": close,
+                     "high": close * 1.01, "low": close * 0.99,
+                     "close": close, "volume": 1000})
+    rows.append({"date": "2026-11-07", "open": 9.2, "high": 9.35,
+                 "low": 8.5, "close": 9.3, "volume": 1000})
+    for i in range(4):
+        rows.append({"date": f"2026-11-{8 + i:02d}", "open": 9.3, "high": 9.4,
+                     "low": 9.2, "close": 9.3, "volume": 1000})
+    monkeypatch.setattr(q, "_mootdx_bars", lambda *a: pd.DataFrame(rows))
+    text = q.get_kline_patterns("600519", "2026-11-11", 5)
+    assert "锤子线" in text
+    assert "历史不足" not in text
+
+
+def test_kline_patterns_clamps_non_positive_window(monkeypatch):
+    idx = pd.date_range("2026-08-01", periods=70, freq="D")
+    frame = pd.DataFrame({"date": idx.strftime("%Y-%m-%d"), "open": 10.0,
+                          "high": 10.2, "low": 9.8, "close": 10.0,
+                          "volume": 1000})
+    monkeypatch.setattr(q, "_mootdx_bars", lambda *a: frame)
+    text = q.get_kline_patterns("600519", idx[-1].strftime("%Y-%m-%d"), 0)
+    assert "窗口：60 根" in text

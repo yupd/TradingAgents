@@ -69,6 +69,32 @@ def get_indicators(
 
 
 @tool
+def get_kline_patterns(
+    symbol: Annotated[str, InjectedState("company_of_interest")],
+    curr_date: Annotated[str, "The current trading date you are trading on, YYYY-mm-dd"],
+    look_back_days: Annotated[int, "how many recent trading days to scan"] = 60,
+    trade_date: Annotated[str, InjectedState("trade_date")] = "",
+) -> str:
+    """Detect the fixed candlestick pattern set for the instrument under analysis.
+
+    Returns a Markdown table of hits with dates, pattern names, direction, rule
+    id and the OHLC / threshold basis, or an explicit "no pattern" line. Call
+    this before claiming any candlestick pattern, reversal or support/resistance
+    observation; do not assert a pattern the result does not name.
+    """
+    try:
+        return route_to_vendor(
+            "get_kline_patterns", symbol, as_of(curr_date, trade_date),
+            look_back_days)
+    except ValueError as exc:
+        return f"DATA_UNAVAILABLE: {exc}"
+    except VendorUnavailableError as exc:
+        return vendor_unavailable("get_kline_patterns", exc)
+    except NoMarketDataError as exc:
+        return no_data_available(exc)
+
+
+@tool
 def get_verified_market_snapshot(
     symbol: Annotated[str, InjectedState("company_of_interest")],
     curr_date: Annotated[str, "the current trading date, YYYY-mm-dd"],

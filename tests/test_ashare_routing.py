@@ -12,3 +12,9 @@ def test_configured_ashare_chain():
     set_config({"data_vendors": {"core_stock_apis": "a_share", "news_data": "a_share"}})
     assert router.get_vendor("core_stock_apis") == "a_share"
     assert router.get_vendor("news_data") == "a_share"
+
+
+def test_kline_patterns_registered_under_technical_indicators():
+    assert router.get_category_for_method("get_kline_patterns") == "technical_indicators"
+    assert list(router.VENDOR_METHODS["get_kline_patterns"]) == ["a_share"]
+    assert router.get_vendor("technical_indicators", "get_kline_patterns") == "a_share"

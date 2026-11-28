@@ -85,3 +85,29 @@ def test_a_report_that_was_never_produced_says_so(module, factory):
     prompt = " ".join(seen)
     assert "not part of this run" in prompt or "not available" in prompt, prompt[:400]
     assert "RSI 61" in prompt  # the report that does exist is still passed through
+
+
+def test_market_analyst_offers_kline_patterns_and_constrains_claims(monkeypatch):
+    from langchain_core.messages import AIMessage
+
+    import tradingagents.agents.analysts.market_analyst as market_analyst
+
+    assert market_analyst.get_kline_patterns in market_analyst.TOOLS
+    seen = {}
+
+    def fake_take_turn(prompt, llm, tools, messages):
+        msgs = prompt.format_messages(messages=[])
+        seen["prompt"] = "\n".join(str(m.content) for m in msgs)
+        return AIMessage("ok"), "report"
+
+    monkeypatch.setattr(market_analyst, "take_turn", fake_take_turn)
+    market_analyst.create_market_analyst(object())({
+        "trade_date": "2026-11-21",
+        "messages": [],
+        "company_of_interest": "600519",
+        "instrument_context": "",
+    })
+    prompt = seen["prompt"]
+    assert "get_kline_patterns" in prompt
+    assert "candlestick" in prompt
+    assert "do not assert" in prompt

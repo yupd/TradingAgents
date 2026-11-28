@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .patterns import PATTERN_NAMES, PatternHit
 from .types import AStockSymbol, DailyBar, Snapshot
 
 
@@ -19,6 +20,23 @@ def format_bars(symbol: AStockSymbol, bars: list[DailyBar], title: str = "日线
     return (f"# {symbol.display} {title}\n\n"
             + _table(rows, ["Date", "Open", "High", "Low", "Close", "Volume"])
             + f"\n\nSource: {source} | As of: {through} | 单位：元、股")
+
+
+def format_patterns(symbol: AStockSymbol, hits: tuple[PatternHit, ...],
+                    source: str, as_of: str, window: int,
+                    skipped: tuple[str, ...] = ()) -> str:
+    if hits:
+        rows = [[hit.date, hit.pattern, hit.direction, hit.rule, hit.detail]
+                for hit in hits]
+        body = _table(rows, ["日期", "形态", "方向", "规则", "依据"])
+    else:
+        body = f"未检测到匹配形态（窗口 {window} 根）"
+    text = (f"# {symbol.display} K线形态\n\n{body}\n\n"
+            f"Source: {source} | As of: {as_of} | 窗口：{window} 根")
+    if skipped:
+        names = "、".join(PATTERN_NAMES[rule] for rule in skipped)
+        text += f"\n历史不足，已跳过：{names}"
+    return text
 
 
 def format_snapshot(symbol: AStockSymbol, snap: Snapshot) -> str:

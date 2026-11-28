@@ -5,7 +5,8 @@ from __future__ import annotations
 import pandas as pd
 
 from . import http
-from .format import format_bars
+from .format import format_bars, format_patterns
+from .patterns import TREND_LOOKBACK, detect_patterns
 from .types import AStockSymbol, DailyBar, Snapshot
 
 _OHLCV = ("date", "open", "high", "low", "close", "volume")
@@ -181,6 +182,33 @@ def get_indicators(symbol: str, indicator: str, curr_date: str, look_back_days: 
     table = "\n".join(f"| {d} | {v} |" for d, v in rows)
     return (f"# {symbol} {key.upper()}\n\n| Date | Value |\n|---|---|\n{table}\n\n"
             f"Source: {bars[-1].source} | As of: {bars[-1].date}")
+
+
+def get_kline_patterns(symbol: str, curr_date: str, look_back_days: int = 60) -> str:
+    """Deterministic candlestick patterns over the window ending at curr_date."""
+    from .symbols import parse_ashare
+
+    sym = parse_ashare(symbol)
+    try:
+        bars = _bars_until(symbol, curr_date)
+    except Exception as exc:
+        return (f"DATA_UNAVAILABLE: no A-share price source answered "
+                f"for {sym.display} ({exc})")
+    if not bars:
+        return f"DATA_UNAVAILABLE: no bars for {sym.display} up to {curr_date}"
+    requested = look_back_days if look_back_days > 0 else 60
+    if requested < len(bars):
+        start = len(bars) - requested
+        # Trend rules read 6 bars before a candidate; keep them as context so
+        # the first bars of the requested window are not silently context-free.
+        scan = detect_patterns(bars[max(0, start - (TREND_LOOKBACK + 1)):])
+        window_start = bars[start].date
+        hits = tuple(hit for hit in scan.hits if hit.date >= window_start)
+    else:
+        scan = detect_patterns(bars)
+        hits = scan.hits
+    return format_patterns(sym, hits, bars[-1].source, bars[-1].date,
+                           min(requested, len(bars)), scan.skipped)
 
 
 def get_verified_market_snapshot(symbol: str, curr_date: str, look_back_days: int = 30) -> str:
