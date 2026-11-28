@@ -19,6 +19,7 @@ from market.fundamentals import (
     Margin,
     Valuation,
 )
+from market.rules import MarketWindow
 from market.summarize import Summary
 
 DAY = "2026-11-26"
@@ -92,8 +93,12 @@ def _fundamentals() -> Fundamentals:
 def _patch_market(monkeypatch, day=DAY, latest=DAY):
     """Trade day and latest session are configurable; the technical block is always present."""
     monkeypatch.setattr(
-        "market.rules.resolve_trade_date",
-        lambda requested: (latest, None) if requested is None else (day, None),
+        "market.rules.resolve_market_window",
+        lambda requested: (
+            MarketWindow(day=latest, gap=None, cutoff=f"{latest} 15:00")
+            if requested is None
+            else MarketWindow(day=day, gap=None, cutoff=f"{day} 15:00")
+        ),
     )
     indices = [
         IndexQuote(name="沪深300", code="sh000300", close=100.0, source="tencent", as_of=day)
@@ -130,7 +135,10 @@ def _patch_market(monkeypatch, day=DAY, latest=DAY):
 
 def _patch_empty_market(monkeypatch, day=DAY):
     """Every technical source is empty, the case where the report must not be written."""
-    monkeypatch.setattr("market.rules.resolve_trade_date", lambda requested: (day, None))
+    monkeypatch.setattr(
+        "market.rules.resolve_market_window",
+        lambda requested: MarketWindow(day=day, gap=None, cutoff=f"{day} 15:00"),
+    )
     monkeypatch.setattr(
         "market.fetch.fetch_indices",
         lambda trade_date: [IndexQuote(name="上证", code="sh000001")],

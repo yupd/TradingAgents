@@ -505,12 +505,13 @@ def run_market(date: str | None = None, fundamentals: bool = False) -> Path:
         fetch_turnover,
     )
     from market.render import render_market
-    from market.rules import classify_trend, collect_gaps, compute_flags, resolve_trade_date
+    from market.rules import classify_trend, collect_gaps, compute_flags, resolve_market_window
     from market.summarize import Summary, safe_summarize
     from tradingagents.default_config import DEFAULT_CONFIG
     from tradingagents.llm_clients import create_tier_client
 
-    day, calendar_gap = resolve_trade_date(date)
+    window = resolve_market_window(date)
+    day, calendar_gap = window.day, window.gap
     indices = fetch_indices(day)
     turnover = fetch_turnover(day)
     sentiment = fetch_sentiment(day)
@@ -541,7 +542,7 @@ def run_market(date: str | None = None, fundamentals: bool = False) -> Path:
     if fundamentals:
         from market.fundamentals import Fundamentals, fetch_fundamentals
 
-        latest = resolve_trade_date(None)[0]
+        latest = resolve_market_window(None).day
         if day == latest:
             fundamental_facts = fetch_fundamentals(day, True)
         else:
@@ -562,6 +563,7 @@ def run_market(date: str | None = None, fundamentals: bool = False) -> Path:
         trade_date=day,
         requested_date=date,
         as_of=day,
+        cutoff=window.cutoff,
         indices=indices,
         turnover=turnover,
         sentiment=sentiment,

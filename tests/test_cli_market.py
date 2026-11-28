@@ -8,12 +8,16 @@ from typer.testing import CliRunner
 
 import cli.main as m
 from market.fetch import Industries, IndexQuote, MarketNews, NewsResult, Sentiment, Turnover
+from market.rules import MarketWindow
 from market.summarize import Summary
 
 
 def _patch_empty_fetchers(monkeypatch, day="2026-11-26"):
     """Every source returns nothing, as when the network is down."""
-    monkeypatch.setattr("market.rules.resolve_trade_date", lambda date: (day, None))
+    monkeypatch.setattr(
+        "market.rules.resolve_market_window",
+        lambda date: MarketWindow(day=day, gap=None, cutoff=f"{day} 15:00"),
+    )
     monkeypatch.setattr(
         "market.fetch.fetch_indices",
         lambda trade_date: [IndexQuote(name="上证", code="sh000001")],
@@ -115,7 +119,10 @@ def test_run_market_writes_the_seven_sections(monkeypatch, tmp_path):
         [MarketNews(title="标题", published_at="2026-11-26 09:00", source="财联社")]
     )
 
-    monkeypatch.setattr("market.rules.resolve_trade_date", lambda date: (day, None))
+    monkeypatch.setattr(
+        "market.rules.resolve_market_window",
+        lambda date: MarketWindow(day=day, gap=None, cutoff=f"{day} 15:00"),
+    )
     monkeypatch.setattr("market.fetch.fetch_indices", lambda trade_date: indices)
     monkeypatch.setattr("market.fetch.fetch_turnover", lambda trade_date: turnover)
     monkeypatch.setattr("market.fetch.fetch_sentiment", lambda trade_date: sentiment)
@@ -186,7 +193,10 @@ def test_llm_creation_failure_still_writes_report_with_exit_zero(monkeypatch, tm
             name="沪深300", code="sh000300", close=100.0, source="tencent", as_of=day
         )
     ]
-    monkeypatch.setattr("market.rules.resolve_trade_date", lambda date: (day, None))
+    monkeypatch.setattr(
+        "market.rules.resolve_market_window",
+        lambda date: MarketWindow(day=day, gap=None, cutoff=f"{day} 15:00"),
+    )
     monkeypatch.setattr("market.fetch.fetch_indices", lambda trade_date: indices)
     monkeypatch.setattr("market.fetch.fetch_turnover", lambda trade_date: Turnover())
     monkeypatch.setattr("market.fetch.fetch_sentiment", lambda trade_date: Sentiment())
@@ -229,7 +239,10 @@ def test_partial_failure_still_writes_a_report(monkeypatch, tmp_path):
             name="沪深300", code="sh000300", close=100.0, source="tencent", as_of=day
         )
     ]
-    monkeypatch.setattr("market.rules.resolve_trade_date", lambda date: (day, None))
+    monkeypatch.setattr(
+        "market.rules.resolve_market_window",
+        lambda date: MarketWindow(day=day, gap=None, cutoff=f"{day} 15:00"),
+    )
     monkeypatch.setattr("market.fetch.fetch_indices", lambda trade_date: indices)
     monkeypatch.setattr("market.fetch.fetch_turnover", lambda trade_date: Turnover())
     monkeypatch.setattr("market.fetch.fetch_sentiment", lambda trade_date: Sentiment())

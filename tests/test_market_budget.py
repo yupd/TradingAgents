@@ -8,6 +8,7 @@ import pytest
 
 from market.fetch import Industries, MarketNews, NewsResult, Turnover
 from market.fundamentals import DJ_SOURCE, IndexValuation
+from market.rules import MarketWindow
 from market.summarize import Summary
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
@@ -40,7 +41,10 @@ def _install_technical(monkeypatch, calls):
 
         return fake
 
-    monkeypatch.setattr("market.rules.resolve_trade_date", lambda requested: (DAY, None))
+    monkeypatch.setattr(
+        "market.rules.resolve_market_window",
+        lambda requested: MarketWindow(day=DAY, gap=None, cutoff=f"{DAY} 15:00"),
+    )
     monkeypatch.setattr("market.fetch.fetch_index_bars", counted("fetch_index_bars", _bars()))
     monkeypatch.setattr(
         "market.fetch.fetch_sse_turnover",
