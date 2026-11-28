@@ -11,6 +11,7 @@ from market.fundamentals import (
     PE_SOURCE,
     IndexValuation,
     Valuation,
+    _baifenwei_index,
     _danjuan_index,
     fetch_valuation,
 )
@@ -470,3 +471,153 @@ def test_index_records_leave_hs300_fields_unchanged(monkeypatch):
     assert valuation.pe_percentile == 100.0
     assert valuation.official_pe1 == 13.61
     assert valuation.source == f"{PE_SOURCE} / {OFFICIAL_SOURCE}"
+
+
+# Synthetic page values per slug; distinct so a mis-paired card fails.
+BFW_VALUES = {
+    "hs300": {"pe": 13.61, "pe_pct": 70.1, "pb": 1.36, "pb_pct": 25.5},
+    "cyb": {"pe": 27.45, "pe_pct": 6.8, "pb": 3.86, "pb_pct": 17.2},
+    "kc50": {"pe": 99.81, "pe_pct": 71.5, "pb": 6.73, "pb_pct": 76.2},
+    "zz500": {"pe": 26.96, "pe_pct": 56.9, "pb": 1.97, "pb_pct": 53.6},
+    "zz1000": {"pe": 35.71, "pe_pct": 33.3, "pb": 1.88, "pb_pct": 8.3},
+}
+_OMIT = object()
+
+
+def _metric_card(label, value, percentile):
+    return (
+        f'<article class="metric-card tall">'
+        f'<span class="metric-name">{label}</span>'
+        f'<div class="metric-value">{value}</div>'
+        f'<div class="metric-sub"><span>近 10 年百分位</span>'
+        f"<strong>{percentile}</strong></div>"
+        f"</article>"
+    )
+
+
+def _bfw_page(slug, page_date="2026-11-27", pe=None, pb=None):
+    """Synthetic page; ``pe``/``pb`` are (value, percentile) or ``None`` to omit."""
+    values = BFW_VALUES[slug]
+    if pe is None:
+        pe = (values["pe"], f'{values["pe_pct"]}%')
+    if pb is None:
+        pb = (values["pb"], f'{values["pb_pct"]}%')
+    cards = ""
+    if pe != _OMIT:
+        cards += _metric_card("PE · 市盈率", *pe)
+    if pb != _OMIT:
+        cards += _metric_card("PB · 市净率", *pb)
+    cards += _metric_card("PS · 市销率", 9.99, "88.8%")
+    date_html = (
+        ""
+        if page_date is _OMIT
+        else f"<span>估值数据日：<strong>{page_date}</strong></span>"
+    )
+    return f"<html><body>{date_html}{cards}</body></html>"
+
+
+class _PageResponse:
+    def __init__(self, text):
+        self.text = text
+
+
+def _serve(monkeypatch, calls, slug):
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        return _PageResponse(_bfw_page(slug))
+
+    monkeypatch.setattr(fundamentals.requests, "get", fake_get)
+
+
+@pytest.mark.parametrize("spec", INDEX_SPECS, ids=lambda spec: spec.code)
+def test_baifenwei_page_parses_each_index(monkeypatch, spec):
+    calls = []
+    _serve(monkeypatch, calls, spec.baifenwei_slug)
+
+    record = _baifenwei_index(spec, TRADE_DATE)
+    expected = BFW_VALUES[spec.baifenwei_slug]
+
+    assert record == IndexValuation(
+        name=spec.name,
+        code=spec.code,
+        pe=expected["pe"],
+        pe_percentile=expected["pe_pct"],
+        pb=expected["pb"],
+        pb_percentile=expected["pb_pct"],
+        as_of="2026-11-27",
+        source=BFW_SOURCE,
+    )
+    assert [url for url, _ in calls] == [
+        f"https://baifenwei.com/index/{spec.baifenwei_slug}/"
+    ]
+    assert calls[0][1]["timeout"] == 4
+    assert len(calls) == 1
+
+
+def test_baifenwei_page_date_after_trade_date_returns_none(monkeypatch):
+    monkeypatch.setattr(
+        fundamentals.requests,
+        "get",
+        lambda url, **kwargs: _PageResponse(
+            _bfw_page("hs300", page_date="2026-11-28")
+        ),
+    )
+
+    assert _baifenwei_index(INDEX_SPECS[0], TRADE_DATE) is None
+
+
+def test_baifenwei_missing_pb_card_returns_none(monkeypatch):
+    monkeypatch.setattr(
+        fundamentals.requests,
+        "get",
+        lambda url, **kwargs: _PageResponse(_bfw_page("hs300", pb=_OMIT)),
+    )
+
+    assert _baifenwei_index(INDEX_SPECS[0], TRADE_DATE) is None
+
+
+def test_baifenwei_missing_data_date_returns_none(monkeypatch):
+    monkeypatch.setattr(
+        fundamentals.requests,
+        "get",
+        lambda url, **kwargs: _PageResponse(
+            _bfw_page("hs300", page_date=_OMIT)
+        ),
+    )
+
+    assert _baifenwei_index(INDEX_SPECS[0], TRADE_DATE) is None
+
+
+@pytest.mark.parametrize(
+    "pe", [("abc", "6.8%"), (27.45, "abc%"), (27.45, None)]
+)
+def test_baifenwei_non_numeric_metric_returns_none(monkeypatch, pe):
+    monkeypatch.setattr(
+        fundamentals.requests,
+        "get",
+        lambda url, **kwargs: _PageResponse(_bfw_page("cyb", pe=pe)),
+    )
+
+    assert _baifenwei_index(INDEX_SPECS[1], TRADE_DATE) is None
+
+
+@pytest.mark.parametrize(
+    "pe", [("0", "6.8%"), ("-1", "6.8%"), ("27.45", "-0.1%"), ("27.45", "100.1%")]
+)
+def test_baifenwei_out_of_range_values_return_none(monkeypatch, pe):
+    monkeypatch.setattr(
+        fundamentals.requests,
+        "get",
+        lambda url, **kwargs: _PageResponse(_bfw_page("cyb", pe=pe)),
+    )
+
+    assert _baifenwei_index(INDEX_SPECS[1], TRADE_DATE) is None
+
+
+def test_baifenwei_timeout_returns_none(monkeypatch):
+    def fake_get(url, **kwargs):
+        raise requests.Timeout("timeout")
+
+    monkeypatch.setattr(fundamentals.requests, "get", fake_get)
+
+    assert _baifenwei_index(INDEX_SPECS[0], TRADE_DATE) is None

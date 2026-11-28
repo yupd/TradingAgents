@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 
 import requests
+from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
@@ -176,6 +177,66 @@ def _danjuan_index(spec: IndexSpec, trade_date: str) -> IndexValuation | None:
         pb_percentile=round(pb_percentile * 100, 1),
         as_of=as_of,
         source=DJ_SOURCE,
+    )
+
+
+def _baifenwei_index(spec: IndexSpec, trade_date: str) -> IndexValuation | None:
+    """One index valuation from the baifenwei page; any failure degrades to ``None``."""
+    try:
+        response = requests.get(
+            f"https://baifenwei.com/index/{spec.baifenwei_slug}/",
+            headers={"User-Agent": _BROWSER_UA},
+            timeout=4,
+        )
+        soup = BeautifulSoup(response.text, "html.parser")
+        date_match = re.search(r"估值数据日[：:]\s*(\d{4}-\d{2}-\d{2})", soup.get_text())
+        if date_match is None or date_match.group(1) > trade_date:
+            return None
+        metrics = {}
+        for card in soup.find_all("article", class_="metric-card"):
+            label_tag = card.find("span", class_="metric-name")
+            label = label_tag.get_text(strip=True) if label_tag else ""
+            if label.startswith("PE"):
+                key = "pe"
+            elif label.startswith("PB"):
+                key = "pb"
+            else:
+                continue
+            value_tag = card.find("div", class_="metric-value")
+            sub_tag = card.find("div", class_="metric-sub")
+            percentile_tag = sub_tag.find("strong") if sub_tag else None
+            value = _num(value_tag.get_text(strip=True)) if value_tag else None
+            percentile = (
+                _num(percentile_tag.get_text(strip=True).rstrip("%"))
+                if percentile_tag
+                else None
+            )
+            if value is None or percentile is None:
+                return None
+            metrics[key] = (value, percentile)
+        if "pe" not in metrics or "pb" not in metrics:
+            return None
+        pe, pe_percentile = metrics["pe"]
+        pb, pb_percentile = metrics["pb"]
+        if (
+            pe <= 0
+            or pb <= 0
+            or not 0 <= pe_percentile <= 100
+            or not 0 <= pb_percentile <= 100
+        ):
+            return None
+    except Exception:
+        logger.warning("百分位指数估值取数失败：%s", spec.name, exc_info=True)
+        return None
+    return IndexValuation(
+        name=spec.name,
+        code=spec.code,
+        pe=pe,
+        pe_percentile=round(pe_percentile, 1),
+        pb=pb,
+        pb_percentile=round(pb_percentile, 1),
+        as_of=date_match.group(1),
+        source=BFW_SOURCE,
     )
 
 
