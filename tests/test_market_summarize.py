@@ -7,8 +7,11 @@ from market.fetch import (
     Turnover,
 )
 from market.fundamentals import (
+    BFW_SOURCE,
+    DJ_SOURCE,
     Earnings,
     Fundamentals,
+    IndexValuation,
     MacroBlock,
     MacroItem,
     Margin,
@@ -97,6 +100,25 @@ def test_partial_data_has_no_dangling_units():
     assert "## 成交额\n不可用" in block
 
 
+_INDEX_VALUATIONS = [
+    IndexValuation(
+        "沪深300", "SH000300", 13.85, 62.4, 1.48, 41.7, "2026-11-27", DJ_SOURCE
+    ),
+    IndexValuation(
+        "创业板", "SZ399006", 38.62, 55.3, 4.21, 48.9, "2026-11-27", BFW_SOURCE
+    ),
+    IndexValuation(
+        "科创50", "SH000688", 84.17, 78.6, 4.95, 69.2, "2026-11-27", DJ_SOURCE
+    ),
+    IndexValuation(
+        "中证500", "SH000905", 27.34, 49.8, 1.92, 44.1, "2026-11-27", DJ_SOURCE
+    ),
+    IndexValuation(
+        "中证1000", "SH000852", 41.58, 58.7, 2.36, 51.3, "2026-11-27", DJ_SOURCE
+    ),
+]
+
+
 def _fundamentals() -> Fundamentals:
     return Fundamentals(
         macro=MacroBlock(
@@ -120,6 +142,7 @@ def _fundamentals() -> Fundamentals:
             official_div2=2.5,
             official_date="2026-11-26",
             source="乐咕乐股（akshare） / 中证指数（akshare）",
+            indexes=_INDEX_VALUATIONS,
         ),
         margin=Margin(
             sh=100.0,
@@ -170,6 +193,60 @@ def test_facts_block_appends_four_fundamental_groups_with_numbers():
     assert "净利润同比：+100.00%" in block
     assert "公告截止日：2026-11-26" in block
     assert "覆盖（接口返回样本内）：1/3（33.3%） 覆盖不足" in block
+
+
+def test_facts_block_includes_multi_index_valuation_rows():
+    facts = _full_facts()
+    facts.fundamentals = _fundamentals()
+
+    block = facts_block(facts)
+
+    assert "多指数估值（蛋卷口径，与上方乐咕口径不可横向比较）：" in block
+    for name, pe, pe_pct, pb, pb_pct in (
+        ("沪深300", "13.85", "62.4%", "1.48", "41.7%"),
+        ("创业板", "38.62", "55.3%", "4.21", "48.9%"),
+        ("科创50", "84.17", "78.6%", "4.95", "69.2%"),
+        ("中证500", "27.34", "49.8%", "1.92", "44.1%"),
+        ("中证1000", "41.58", "58.7%", "2.36", "51.3%"),
+    ):
+        assert (
+            f"- {name}：PE {pe}，PE 分位 {pe_pct}，PB {pb}，PB 分位 {pb_pct}"
+            in block
+        )
+    assert f"2026-11-27，{DJ_SOURCE}" in block
+    assert f"2026-11-27，{BFW_SOURCE}" in block
+
+
+def test_facts_block_with_only_index_valuation_is_not_unavailable():
+    facts = _full_facts()
+    facts.fundamentals = Fundamentals(valuation=Valuation(indexes=_INDEX_VALUATIONS))
+
+    block = facts_block(facts)
+
+    assert "## 估值水平\n不可用" not in block
+    assert "多指数估值（蛋卷口径，与上方乐咕口径不可横向比较）：" in block
+    assert "- 沪深300：PE 13.85" in block
+
+
+def test_facts_block_without_index_valuation_has_no_multi_index_line():
+    facts = _full_facts()
+    facts.fundamentals = _fundamentals()
+    facts.fundamentals.valuation.indexes = []
+
+    block = facts_block(facts)
+
+    assert "多指数估值" not in block
+
+
+def test_validate_numbers_accepts_multi_index_facts_text():
+    facts = _full_facts()
+    facts.fundamentals = _fundamentals()
+    text = "创业板 PE 38.62，PE 分位 55.3%，PB 4.21，PB 分位 48.9%。"
+
+    result = validate_numbers(text, facts_block(facts))
+
+    assert result.dropped == 0
+    assert result.text == text
 
 
 def test_facts_block_without_official_valuation_omits_the_caliber_note():

@@ -145,7 +145,7 @@ def _valuation_block(valuation) -> str:
             valuation.official_div1,
             valuation.official_div2,
         )
-    ):
+    ) and not valuation.indexes:
         return _NA
     window = (
         f"近 {valuation.percentile_window} 个月"
@@ -172,6 +172,15 @@ def _valuation_block(valuation) -> str:
         )
     ):
         lines.append("口径以中证指数为准")
+    if valuation.indexes:
+        lines.append("多指数估值（蛋卷口径，与上方乐咕口径不可横向比较）：")
+        lines.extend(
+            f"- {index.name}：PE {_fmt(index.pe)}，"
+            f"PE 分位 {_rate(index.pe_percentile)}，"
+            f"PB {_fmt(index.pb)}，PB 分位 {_rate(index.pb_percentile)}，"
+            f"{index.as_of or _NA}，{index.source or _NA}"
+            for index in valuation.indexes
+        )
     return "\n".join(lines)
 
 
