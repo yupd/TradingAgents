@@ -225,6 +225,8 @@ AKSHARE_LEAVES = (
     "index_value_csindex",
     "stock_margin_sse_js",
     "stock_margin_szse_js",
+    "stock_margin_sse",
+    "stock_margin_szse",
     "stock_yjbb_em",
 )
 
@@ -254,8 +256,8 @@ def test_every_akshare_leaf_failing_degrades_to_data_unavailable(monkeypatch, tm
         "macro: PPI 不可用",
         "macro: PMI 不可用",
         "macro: 社零 不可用",
-        "macro: 固定资产投资 不可用",
-        "macro: 进出口 不可用",
+        "macro: 固定资产投资（累计值） 不可用",
+        "macro: 出口 不可用",
         "valuation: 第三方估值不可用",
         "valuation: 中证官方估值不可用",
         "margin: 两融数据不可用",

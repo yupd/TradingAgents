@@ -140,7 +140,7 @@ def test_industries_parsed_from_frame_render_name_and_percentage():
     report = render_market(facts, Summary(""))
 
     assert "涨幅前5：半导体 +3.2%" in report
-    assert "跌幅前5：银行 -1.5%" in report
+    assert "涨跌幅后5：银行 -1.5% 半导体 +3.2%" in report
     assert "来源：同花顺 | As of: 2026-11-25 15:00" in report
 
 

@@ -55,8 +55,8 @@ def test_fetch_macro_returns_six_items_in_fixed_order(monkeypatch):
         "PPI",
         "PMI",
         "社零",
-        "固定资产投资",
-        "进出口",
+        "固定资产投资（累计值）",
+        "出口",
     ]
     assert isinstance(block.items[0], MacroItem)
     assert all(item.source == SOURCE for item in block.items)
@@ -74,12 +74,12 @@ def test_fetch_macro_returns_six_items_in_fixed_order(monkeypatch):
     retail = _item(block.items, "社零")
     assert (retail.value, retail.unit) == (2.9, "%")
 
-    fai = _item(block.items, "固定资产投资")
+    fai = _item(block.items, "固定资产投资（累计值）")
     assert round(fai.value, 4) == 10.0
     assert fai.unit == "%"
-    assert fai.note == "自年初累计同比（按累计值计算）"
+    assert fai.note == "按累计值计算，非统计局可比口径"
 
-    trade = _item(block.items, "进出口")
+    trade = _item(block.items, "出口")
     assert (trade.value, trade.unit) == (5.4, "%")
     assert "1.2" in trade.note
 
@@ -127,10 +127,10 @@ def test_fixed_asset_investment_missing_prior_year_month_is_none(monkeypatch):
         ),
     )
 
-    fai = _item(fetch_macro().items, "固定资产投资")
+    fai = _item(fetch_macro().items, "固定资产投资（累计值）")
 
     assert fai.value is None
-    assert fai.note == "自年初累计同比（按累计值计算）"
+    assert fai.note == "按累计值计算，非统计局可比口径"
 
 
 def test_fixed_asset_investment_non_positive_prior_value_is_none(monkeypatch):
@@ -141,7 +141,7 @@ def test_fixed_asset_investment_non_positive_prior_value_is_none(monkeypatch):
         ),
     )
 
-    assert _item(fetch_macro().items, "固定资产投资").value is None
+    assert _item(fetch_macro().items, "固定资产投资（累计值）").value is None
 
 
 def test_trade_keeps_import_note_when_export_missing(monkeypatch):
@@ -152,7 +152,7 @@ def test_trade_keeps_import_note_when_export_missing(monkeypatch):
         ),
     )
 
-    trade = _item(fetch_macro().items, "进出口")
+    trade = _item(fetch_macro().items, "出口")
 
     assert trade.value is None
     assert "1.2" in trade.note

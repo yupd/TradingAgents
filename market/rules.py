@@ -8,6 +8,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING
 
 from market.fetch import IndexQuote, IndexSpec, Industries, NewsResult, Sentiment, Turnover
+from market.fundamentals import MARGIN_STALE_DAYS
 from tradingagents.dataflows.vendors.a_share.calendar import previous_trade_date
 from tradingagents.dataflows.vendors.a_share.types import DailyBar
 
@@ -169,6 +170,10 @@ def _fundamental_gaps(fundamentals: Fundamentals) -> list[str]:
             and margin.change_5d is None
         ):
             gaps.append("margin: 5 日变化不可用（共同日期不足 6 天）")
+        if margin.stale_days is not None and margin.stale_days > MARGIN_STALE_DAYS:
+            gaps.append(
+                f"margin: 数据滞后 {margin.stale_days} 天（as of {margin.as_of}）"
+            )
 
     earnings = fundamentals.earnings
     if earnings is None or earnings.net_profit_yoy is None:
@@ -178,6 +183,8 @@ def _fundamental_gaps(fundamentals: Fundamentals) -> list[str]:
             gaps.append("earnings: 营收同比不可用")
         if earnings.coverage is None:
             gaps.append("earnings: 覆盖率不可用")
+        if earnings.coverage_low:
+            gaps.append("earnings: 覆盖不足")
     return gaps
 
 

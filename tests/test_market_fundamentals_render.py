@@ -1,6 +1,6 @@
 """Rendering the four fundamentals sections, including history and degraded blocks."""
 
-from market.fetch import MarketFacts
+from market.fetch import Industries, MarketFacts
 from market.fundamentals import (
     Earnings,
     Fundamentals,
@@ -26,8 +26,8 @@ def _macro() -> MacroBlock:
             MacroItem("PPI", -2.1, "%", "2026年10月", MACRO_SOURCE),
             MacroItem("PMI", 49.5, "指数", "2026年10月", MACRO_SOURCE, "非制造业指数 50.1"),
             MacroItem("社零", 2.9, "%", "2026年10月", MACRO_SOURCE),
-            MacroItem("固定资产投资", 10.0, "%", "2026年10月", MACRO_SOURCE),
-            MacroItem("进出口", 5.4, "%", "2026年10月", MACRO_SOURCE, "进口同比 1.2%"),
+            MacroItem("固定资产投资（累计值）", 10.0, "%", "2026年10月", MACRO_SOURCE),
+            MacroItem("出口", 5.4, "%", "2026年10月", MACRO_SOURCE, "进口同比 1.2%"),
         ]
     )
 
@@ -69,7 +69,7 @@ def _earnings() -> Earnings:
         total=3,
         coverage_low=True,
         source="东财业绩报表（akshare）",
-        note="按个股财报加权聚合，非官方指数口径",
+        note="按可比公司净利润总额计算，非官方指数口径",
     )
 
 
@@ -145,6 +145,7 @@ def test_macro_missing_item_renders_unavailable_and_adds_gap():
 def test_valuation_renders_third_party_and_official_side_by_side():
     section = _section(render_market(_facts(_fundamentals()), Summary("")), "估值水平")
 
+    assert "标的：沪深300" in section
     assert "第三方 PE(TTM)：12.60｜日期：2026-11-01" in section
     assert "PE 分位：45.2%（近 120 个月）" in section
     assert "官方市盈率1：13.61" in section
@@ -224,7 +225,7 @@ def test_earnings_renders_period_growth_coverage_and_low_coverage():
     assert "净利润同比：+100.00%" in section
     assert "营收同比：+25.00%" in section
     assert "覆盖（接口返回样本内）：1/3（33.3%），覆盖不足" in section
-    assert "说明：按个股财报加权聚合，非官方指数口径" in section
+    assert "说明：按可比公司净利润总额计算，非官方指数口径" in section
 
 
 def test_earnings_missing_announcement_cutoff_renders_unavailable():
@@ -266,3 +267,67 @@ def test_history_mode_shows_only_the_reason_in_each_section():
 
     for heading in ("宏观基本面", "估值水平", "资金面", "盈利概览"):
         assert _section(report, heading) == "历史模式不可用"
+
+
+def test_margin_stale_days_renders_and_adds_gap():
+    margin = Margin(
+        sh=100.0,
+        sz=50.0,
+        total=150.0,
+        as_of="2026-11-05",
+        stale_days=22,
+        source="上交所/深交所（akshare）",
+    )
+    factors = Fundamentals(margin=margin)
+
+    report = render_market(_facts(factors), Summary(""))
+
+    assert "数据滞后：22 天" in _section(report, "资金面")
+    gaps = collect_gaps([], None, None, None, None, fundamentals=factors)
+    assert "margin: 数据滞后 22 天（as of 2026-11-05）" in gaps
+
+
+def test_industry_mixed_performance_uses_涨跌幅后5():
+    facts = MarketFacts(
+        trade_date=DAY,
+        industries=Industries(
+            gainers=[("半导体", 15.0)],
+            losers=[("银行", -1.1), ("煤炭", 1.2)],
+            as_of=DAY,
+        ),
+    )
+
+    section = _section(render_market(facts, Summary("")), "行业强弱")
+
+    assert "涨跌幅后5：银行 -1.1% 煤炭 +1.2%" in section
+    assert "跌幅前5" not in section
+
+
+def test_industry_all_positive_uses_涨幅后5():
+    facts = MarketFacts(
+        trade_date=DAY,
+        industries=Industries(
+            gainers=[("半导体", 15.0)],
+            losers=[("煤炭", 1.2), ("银行", 2.1)],
+            as_of=DAY,
+        ),
+    )
+
+    section = _section(render_market(facts, Summary("")), "行业强弱")
+
+    assert "涨幅后5：煤炭 +1.2% 银行 +2.1%" in section
+
+
+def test_industry_all_negative_uses_跌幅前5():
+    facts = MarketFacts(
+        trade_date=DAY,
+        industries=Industries(
+            gainers=[],
+            losers=[("银行", -1.1), ("煤炭", -2.2)],
+            as_of=DAY,
+        ),
+    )
+
+    section = _section(render_market(facts, Summary("")), "行业强弱")
+
+    assert "跌幅前5：银行 -1.1% 煤炭 -2.2%" in section

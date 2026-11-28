@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from datetime import date, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +14,9 @@ PE_SOURCE = "乐咕乐股（akshare）"
 OFFICIAL_SOURCE = "中证指数（akshare）"
 MARGIN_SOURCE = "上交所/深交所（akshare）"
 EARNINGS_SOURCE = "东财业绩报表（akshare）"
-EARNINGS_NOTE = "按个股财报加权聚合，非官方指数口径"
+EARNINGS_NOTE = "按可比公司净利润总额计算，非官方指数口径"
 PERCENTILE_MONTHS = 120
+MARGIN_STALE_DAYS = 3
 MONTH_RE = re.compile(r"(\d{4})年(\d{1,2})月")
 
 
@@ -58,6 +60,7 @@ class Margin:
     as_of: str | None = None
     source: str | None = None
     note: str | None = None
+    stale_days: int | None = None
 
 
 @dataclass
@@ -139,7 +142,7 @@ def _fixed_asset_item(name, unit, frame):
     row = _latest_row(frame)
     if row is None:
         return MacroItem(name, None, unit, None, SOURCE)
-    note = "自年初累计同比（按累计值计算）"
+    note = "按累计值计算，非统计局可比口径"
     period = str(row["月份"])
     current = _num(row["自年初累计"]) if "自年初累计" in frame.columns else None
     key = _period_of(row)
@@ -179,16 +182,16 @@ def fetch_macro() -> MacroBlock:
             ),
         ),
         (
-            "固定资产投资",
+            "固定资产投资（累计值）",
             "%",
             lambda: _fixed_asset_item(
-                "固定资产投资", "%", ak.macro_china_fixed_asset_investment()
+                "固定资产投资（累计值）", "%", ak.macro_china_fixed_asset_investment()
             ),
         ),
         (
-            "进出口",
+            "出口",
             "%",
-            lambda: _trade_item("进出口", "%", ak.macro_china_customs_trade()),
+            lambda: _trade_item("出口", "%", ak.macro_china_customs_trade()),
         ),
     )
     items = []
@@ -317,6 +320,84 @@ def _margin_series(fetch, trade_date: str) -> dict[str, float]:
     return series
 
 
+def _latest_day(series: dict[str, float]) -> str | None:
+    return max(series) if series else None
+
+
+def _is_fresh(
+    series: dict[str, float], trade_date: str, days: int = MARGIN_STALE_DAYS
+) -> bool:
+    latest = _latest_day(series)
+    if latest is None:
+        return False
+    return (date.fromisoformat(trade_date) - date.fromisoformat(latest)).days <= days
+
+
+def _margin_series_dated_sse(trade_date: str) -> dict[str, float]:
+    """SSE dated endpoint; ``信用交易日期`` is YYYYMMDD and values are yuan."""
+    import akshare as ak
+
+    start = (date.fromisoformat(trade_date) - timedelta(days=20)).strftime("%Y%m%d")
+    frame = ak.stock_margin_sse(
+        start_date=start, end_date=trade_date.replace("-", "")
+    )
+    if frame is None or frame.empty or "融资融券余额" not in frame.columns:
+        return {}
+    date_column = "信用交易日期" if "信用交易日期" in frame.columns else "日期"
+    series = {}
+    for _, row in frame.iterrows():
+        raw = str(row.get(date_column, ""))
+        if raw.isdigit() and len(raw) == 8:
+            day = f"{raw[:4]}-{raw[4:6]}-{raw[6:]}"
+        else:
+            day = _iso_date(row.get(date_column))
+        value = _num(row.get("融资融券余额"))
+        if day is not None and day <= trade_date and value is not None:
+            series[day] = value / 1e8
+    return series
+
+
+def _margin_series_dated_szse(trade_date: str) -> dict[str, float]:
+    """SZSE dated endpoint; a single row in 亿元, so no unit conversion.
+
+    The current session is often not published yet, so walk back up to three
+    days to find the latest available row.
+    """
+    import akshare as ak
+
+    for offset in range(4):
+        day = (date.fromisoformat(trade_date) - timedelta(days=offset)).isoformat()
+        try:
+            frame = ak.stock_margin_szse(date=day.replace("-", ""))
+        except Exception:
+            continue
+        if frame is None or frame.empty or "融资融券余额" not in frame.columns:
+            continue
+        value = _num(frame.iloc[0].get("融资融券余额"))
+        if value is not None:
+            return {day: value}
+    return {}
+
+
+def _margin_side(js_fetch, dated_fetch, trade_date: str) -> dict[str, float]:
+    """Fresh history wins; otherwise prefer the newer dated row."""
+    try:
+        series = _margin_series(js_fetch, trade_date)
+    except Exception:
+        logger.warning("两融历史接口失败", exc_info=True)
+        series = {}
+    if _is_fresh(series, trade_date):
+        return series
+    try:
+        dated = dated_fetch(trade_date)
+    except Exception as exc:
+        logger.debug("两融日期接口失败: %s", exc)
+        dated = {}
+    if dated and (not series or _latest_day(dated) > _latest_day(series)):
+        return dated
+    return series
+
+
 def _combine_margin(sh: dict[str, float], sz: dict[str, float]) -> Margin:
     """Align both markets on common dates; totals need both sides."""
     common = sorted(set(sh) & set(sz))
@@ -364,20 +445,26 @@ def fetch_margin(trade_date: str) -> Margin:
     """SSE and SZSE margin balances; a failed side degrades, both failing stays empty."""
     import akshare as ak
 
-    series = []
-    for name, attribute in (
-        ("沪市", "stock_margin_sse_js"),
-        ("深市", "stock_margin_szse_js"),
+    sides = []
+    for name, attribute, dated_fetch in (
+        ("沪市", "stock_margin_sse_js", _margin_series_dated_sse),
+        ("深市", "stock_margin_szse_js", _margin_series_dated_szse),
     ):
-        try:
-            fetch = getattr(ak, attribute, None)
-            if fetch is None:
-                raise AttributeError(f"akshare 缺少 {attribute}")
-            series.append(_margin_series(fetch, trade_date))
-        except Exception:
-            logger.warning("两融取数失败：%s", name, exc_info=True)
-            series.append({})
-    return _combine_margin(series[0], series[1])
+        fetch = getattr(ak, attribute, None)
+        if fetch is None:
+            logger.warning("两融取数失败：%s（akshare 缺少 %s）", name, attribute)
+            sides.append({})
+            continue
+        sides.append(_margin_side(fetch, dated_fetch, trade_date))
+    margin = _combine_margin(sides[0], sides[1])
+    if margin.as_of:
+        margin.stale_days = max(
+            0, (date.fromisoformat(trade_date) - date.fromisoformat(margin.as_of)).days
+        )
+        if margin.stale_days > MARGIN_STALE_DAYS:
+            suffix = f"数据滞后 {margin.stale_days} 天（as of {margin.as_of}）"
+            margin.note = f"{margin.note}；{suffix}" if margin.note else suffix
+    return margin
 
 
 def latest_report_period(trade_date: str) -> str:
@@ -389,22 +476,41 @@ def latest_report_period(trade_date: str) -> str:
     return f"{year - 1:04d}-12-31"
 
 
-def _aggregate_yoy(rows, value_column, yoy_column):
-    """Weighted YoY over rows where both the value and its YoY are usable."""
-    current = prior = 0.0
+def _code_values(frame, column):
+    """``股票代码 -> 数值`` for rows with a usable code and value."""
+    values = {}
+    if frame is None or getattr(frame, "empty", True):
+        return values
+    if "股票代码" not in frame.columns or column not in frame.columns:
+        return values
+    for _, row in frame.iterrows():
+        code = str(row.get("股票代码", "")).strip()
+        value = _num(row.get(column))
+        if code and value is not None:
+            values[code] = value
+    return values
+
+
+def _aggregate_total_yoy(rows, prior_frame, column):
+    """Growth over the same companies, using the prior-year report's totals."""
+    current = {}
     for row in rows:
-        value = _num(row.get(value_column))
-        yoy = _num(row.get(yoy_column))
-        if value is None or yoy is None or yoy == -100:
-            continue
-        current += value
-        prior += value / (1 + yoy / 100)
-    if prior <= 0:
+        code = str(row.get("股票代码", "")).strip()
+        value = _num(row.get(column))
+        if code and value is not None:
+            current[code] = value
+    prior = _code_values(prior_frame, column)
+    common = [code for code in current if code in prior]
+    if not common:
         return None
-    return round((current / prior - 1) * 100, 2)
+    current_total = sum(current[code] for code in common)
+    prior_total = sum(prior[code] for code in common)
+    if prior_total <= 0:
+        return None
+    return round((current_total / prior_total - 1) * 100, 2)
 
 
-def _parse_earnings(frame, trade_date: str, period: str) -> Earnings | None:
+def _parse_earnings(frame, prior_frame, trade_date: str, period: str) -> Earnings | None:
     """Filter by announcement date and aggregate weighted YoY plus coverage."""
     if frame is None or getattr(frame, "empty", True):
         return None
@@ -418,9 +524,9 @@ def _parse_earnings(frame, trade_date: str, period: str) -> Earnings | None:
     return Earnings(
         period=period,
         announcement_cutoff=trade_date,
-        net_profit_yoy=_aggregate_yoy(rows, "净利润-净利润", "净利润-同比增长"),
-        revenue_yoy=_aggregate_yoy(
-            rows, "营业总收入-营业总收入", "营业总收入-同比增长"
+        net_profit_yoy=_aggregate_total_yoy(rows, prior_frame, "净利润-净利润"),
+        revenue_yoy=_aggregate_total_yoy(
+            rows, prior_frame, "营业总收入-营业总收入"
         ),
         coverage=coverage,
         covered=len(rows),
@@ -441,7 +547,15 @@ def fetch_earnings(trade_date: str) -> Earnings | None:
     except Exception:
         logger.warning("业绩报表取数失败", exc_info=True)
         return None
-    return _parse_earnings(frame, trade_date, period)
+    if frame is None or getattr(frame, "empty", True):
+        return None
+    prior_period = f"{int(period[:4]) - 1}{period[4:]}"
+    try:
+        prior = ak.stock_yjbb_em(date=prior_period.replace("-", ""))
+    except Exception:
+        logger.warning("上年同期业绩报表取数失败", exc_info=True)
+        prior = None
+    return _parse_earnings(frame, prior, trade_date, period)
 
 
 def fetch_fundamentals(trade_date: str, is_latest: bool) -> Fundamentals:

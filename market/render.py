@@ -155,9 +155,16 @@ def _industry_line(label: str, rows) -> str:
 
 
 def _industries(industries) -> str:
+    losers = industries.losers if industries else []
+    if not losers or all(value < 0 for _, value in losers):
+        loser_label = "跌幅前5"
+    elif all(value >= 0 for _, value in losers):
+        loser_label = "涨幅后5"
+    else:
+        loser_label = "涨跌幅后5"
     lines = [
         _industry_line("涨幅前5", industries.gainers if industries else []),
-        _industry_line("跌幅前5", industries.losers if industries else []),
+        _industry_line(loser_label, losers),
     ]
     if industries and industries.note:
         lines.append(f"说明：{industries.note}")
@@ -231,6 +238,7 @@ def _valuation(fundamentals) -> str:
     if valuation.percentile_window is not None:
         percentile += f"（近 {valuation.percentile_window} 个月）"
     lines = [
+        "标的：沪深300",
         f"第三方 PE(TTM)：{_num(valuation.pe_ttm)}｜日期：{valuation.pe_date or _NA}",
         f"PE 分位：{percentile}",
         f"官方市盈率1：{_num(valuation.official_pe1)}",
@@ -270,8 +278,10 @@ def _margin(fundamentals) -> str:
         f"合计：{_yi(margin.total)}",
         f"5 日变化：{_yi(margin.change_5d, signed=True)}",
         f"As of：{margin.as_of or _NA}",
-        f"来源：{margin.source or _NA}",
     ]
+    if margin.stale_days is not None and margin.stale_days > 3:
+        lines.append(f"数据滞后：{margin.stale_days} 天")
+    lines.append(f"来源：{margin.source or _NA}")
     if margin.note:
         lines.append(f"说明：{margin.note}")
     return "\n".join(lines)

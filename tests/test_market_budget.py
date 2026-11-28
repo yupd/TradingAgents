@@ -1,4 +1,4 @@
-"""The default market run stays within 12 source calls; fundamentals adds ≤22."""
+"""The default market run stays within 12 source calls; fundamentals adds ≤34."""
 
 from datetime import date, timedelta
 from types import SimpleNamespace
@@ -181,7 +181,7 @@ def test_normal_market_run_uses_exactly_twelve_source_calls(monkeypatch, tmp_pat
 
 
 @pytest.mark.unit
-def test_fundamentals_mode_adds_at_most_twenty_two_source_calls(monkeypatch, tmp_path):
+def test_fundamentals_mode_adds_at_most_thirty_four_source_calls(monkeypatch, tmp_path):
     technical: list[str] = []
     fundamental: list[str] = []
     _install_technical(monkeypatch, technical)
@@ -198,8 +198,8 @@ def test_fundamentals_mode_adds_at_most_twenty_two_source_calls(monkeypatch, tmp
     assert len(set(macro)) == 6  # each macro series exactly once
     assert fundamental.count("valuation") == 2
     assert fundamental.count("margin") == 2
-    assert fundamental.count("earnings") == 12
-    assert len(fundamental) == 22
-    assert len(fundamental) <= 22
+    assert fundamental.count("earnings") == 24
+    assert len(fundamental) == 34
+    assert len(fundamental) <= 34
     assert len(technical) == 12
-    assert len(technical) + len(fundamental) <= 34
+    assert len(technical) + len(fundamental) <= 46
