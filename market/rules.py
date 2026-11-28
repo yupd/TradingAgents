@@ -138,7 +138,8 @@ def resolve_market_window(
     else:
         now = now.astimezone(_SHANGHAI)
     today = now.date().isoformat()
-    original_target = requested or today
+    # Normalize before the clock comparison; blank input still reaches resolve_trade_date.
+    original_target = today if requested is None else requested.strip()
     intraday = original_target == today and now.time() < time(15, 0)
     target = (now.date() - timedelta(days=1)).isoformat() if intraday else original_target
     day, gap = resolve_trade_date(target, today=today)

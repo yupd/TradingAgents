@@ -245,6 +245,21 @@ def test_market_window_explicit_history_unchanged(monkeypatch):
     assert window.cutoff == "2026-11-20 15:00"
 
 
+def test_market_window_padded_today_is_intraday(monkeypatch):
+    monkeypatch.setattr("market.rules.previous_trade_date", lambda value: value)
+
+    window = _market_window(" 2026-11-25 ", datetime(2026, 11, 25, 10, 0, tzinfo=_SHANGHAI))
+
+    assert window.day == "2026-11-24"
+    assert window.cutoff == "2026-11-24 15:00"
+
+
+def test_market_window_blank_requested_raises():
+    for requested in ("", "   "):
+        with pytest.raises(ValueError):
+            _market_window(requested, datetime(2026, 11, 25, 10, 0, tzinfo=_SHANGHAI))
+
+
 def test_market_window_weekend_falls_back(monkeypatch):
     # 2026-11-28 is a Saturday; the most recent session is Friday. Unlike identity,
     # this models a non-trading day, so the calendar itself must skip the weekend.

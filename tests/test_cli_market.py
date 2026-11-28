@@ -119,9 +119,11 @@ def test_run_market_writes_the_seven_sections(monkeypatch, tmp_path):
         [MarketNews(title="标题", published_at="2026-11-26 09:00", source="财联社")]
     )
 
+    # A cutoff distinct from the render fallback, so the header proves the wiring.
+    cutoff = f"运行时刻 {day} 10:00"
     monkeypatch.setattr(
         "market.rules.resolve_market_window",
-        lambda date: MarketWindow(day=day, gap=None, cutoff=f"{day} 15:00"),
+        lambda date: MarketWindow(day=day, gap=None, cutoff=cutoff),
     )
     monkeypatch.setattr("market.fetch.fetch_indices", lambda trade_date: indices)
     monkeypatch.setattr("market.fetch.fetch_turnover", lambda trade_date: turnover)
@@ -143,6 +145,7 @@ def test_run_market_writes_the_seven_sections(monkeypatch, tmp_path):
     text = path.read_text(encoding="utf-8")
     assert text.endswith("\n")
     assert f"# A 股大盘复盘 {day}" in text
+    assert f"行情截止：{cutoff}；行业/新闻为运行时刻快照" in text
     for heading in HEADINGS:
         assert f"## {heading}" in text
 
