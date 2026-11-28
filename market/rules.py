@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, time, timedelta, timezone
 from typing import TYPE_CHECKING
 
 from market.fetch import IndexQuote, IndexSpec, Industries, NewsResult, Sentiment, Turnover
@@ -112,6 +112,40 @@ def resolve_trade_date(
         return previous_trade_date(target), None
     except Exception as exc:
         return target, f"calendar: {type(exc).__name__}: {exc}"
+
+
+_SHANGHAI = timezone(timedelta(hours=8))
+
+
+@dataclass(frozen=True)
+class MarketWindow:
+    day: str
+    gap: str | None
+    cutoff: str
+
+
+def resolve_market_window(
+    requested: str | None, now: datetime | None = None
+) -> MarketWindow:
+    """Reporting day plus cutoff label for the Shanghai market clock.
+
+    Intraday means a same-day target before 15:00, which cannot be a completed session.
+    """
+    if now is None:
+        now = datetime.now(_SHANGHAI)
+    elif now.tzinfo is None:
+        now = now.replace(tzinfo=_SHANGHAI)
+    else:
+        now = now.astimezone(_SHANGHAI)
+    today = now.date().isoformat()
+    original_target = requested or today
+    intraday = original_target == today and now.time() < time(15, 0)
+    target = (now.date() - timedelta(days=1)).isoformat() if intraday else original_target
+    day, gap = resolve_trade_date(target, today=today)
+    if gap and intraday:
+        # Calendar failed and today has not closed: keep today, label the actual run time.
+        return MarketWindow(original_target, gap, f"运行时刻 {now:%Y-%m-%d %H:%M}")
+    return MarketWindow(day, gap, f"{day} 15:00")
 
 
 def broken_rate(limit_up: int | None, broken: int | None) -> float | None:
