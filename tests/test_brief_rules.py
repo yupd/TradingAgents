@@ -34,6 +34,13 @@ def test_volume_spike_flag():
     assert any(f.kind == "volume_spike" for f in flags)
 
 
+def test_volume_spike_ratio_unchanged():
+    flags = compute_flags(facts(quote=_snap(volume=3000), bars=_bars([1000] * 20)))
+    spike = [f for f in flags if f.kind == "volume_spike"]
+    assert len(spike) == 1
+    assert spike[0].detail == "量为 20 日均量的 3.0 倍"
+
+
 def test_missing_data_is_reported():
     flags = compute_flags(facts(missing=["quote", "fund_flow"]))
     assert any(f.kind == "data_missing" and "quote" in f.detail for f in flags)

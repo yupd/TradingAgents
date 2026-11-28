@@ -1,4 +1,5 @@
 import re
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -38,6 +39,14 @@ def test_format_has_source_and_as_of(monkeypatch):
     monkeypatch.setattr(q, "_mootdx_bars", lambda *a: BARS)
     text = q.get_stock_data("600519", "2026-11-18", "2026-11-21")
     assert "Source: mootdx" in text and "As of: 2026-11-21" in text
+
+
+def test_sina_volume_converts_shares_to_lots(monkeypatch):
+    payload = ('x([{"day":"2026-11-27","open":"1469.99","high":"1481.41",'
+               '"low":"1452.99","close":"1472.36","volume":"3980835"}])')
+    monkeypatch.setattr(q.http, "em_get", lambda *a, **k: SimpleNamespace(text=payload))
+    frame = q._sina_bars(parse_ashare("600519"), "2026-11-01", "2026-11-27")
+    assert frame["volume"].iloc[0] == 3980835 / 100
 
 
 def test_indicators_use_local_bars(monkeypatch):
