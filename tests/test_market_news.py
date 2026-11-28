@@ -64,7 +64,7 @@ def test_fetch_news_passes_arguments_and_returns_parsed_items(monkeypatch):
 
     monkeypatch.setattr(fetch, "get_global_news", fake)
     result = fetch.fetch_news("2026-11-26", look_back_days=3, limit=2)
-    assert calls == [("2026-11-26", 3, 2)]
+    assert calls == [("2026-11-26", 3, 200)]
     assert result.gap is None
     assert [item.title for item in result.items] == [
         "三大指数集体高开",
@@ -176,6 +176,25 @@ def test_fetch_news_filters_before_truncating(monkeypatch):
 
     assert [item.title for item in result.items] == ["央行开展逆回购操作"]
     assert len(result.items) <= 10
+
+
+def test_fetch_news_truncates_after_filtering(monkeypatch):
+    text = "\n".join(
+        [
+            "# 市场快讯（近 7 天）",
+            "- [东财快讯] 2026-11-26 10:00 三大指数集体高开",
+            "- [东财快讯] 2026-11-26 09:00 俄罗斯考虑对海产品进口征收关税",
+            "- [东财快讯] 2026-11-26 08:00 央行开展逆回购操作",
+            "- [东财快讯] 2026-11-26 07:00 国常会部署加力稳市",
+        ]
+    )
+    monkeypatch.setattr(fetch, "get_global_news", lambda *a, **kw: text)
+
+    result = fetch.fetch_news("2026-11-26", limit=2)
+
+    titles = [item.title for item in result.items]
+    assert titles == ["三大指数集体高开", "央行开展逆回购操作"]
+    assert "俄罗斯考虑对海产品进口征收关税" not in titles
 
 
 def test_fetch_news_gap_when_no_keyword_matches(monkeypatch):

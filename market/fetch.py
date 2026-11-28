@@ -483,14 +483,20 @@ def filter_market_news(items: list[MarketNews]) -> list[MarketNews]:
     return kept
 
 
+# 源端一次返回约 200 条；取全量再本地筛选，避免在关键词过滤前被 limit 截断。
+_NEWS_SCAN_LIMIT = 200
+
+
 def fetch_news(trade_date: str, look_back_days: int = 7, limit: int = 10) -> NewsResult:
     """Market-wide flashes; a failed or empty source is recorded as a gap, never raised."""
     try:
-        text = get_global_news(trade_date, look_back_days=look_back_days, limit=limit)
+        text = get_global_news(
+            trade_date, look_back_days=look_back_days, limit=_NEWS_SCAN_LIMIT
+        )
     except Exception as exc:
         logger.debug("news fetch failed: %s", exc)
         return NewsResult([], gap=f"news: {type(exc).__name__}: {exc}")
-    items = filter_market_news(_parse_global_news(text))
+    items = filter_market_news(_parse_global_news(text))[:limit]
     return NewsResult(items) if items else NewsResult([], gap="news: 无市场相关条目")
 
 
