@@ -1,4 +1,6 @@
 import pandas as pd
+import pytest
+import requests
 
 import market.fundamentals as fundamentals
 from market.fundamentals import (
@@ -258,3 +260,120 @@ def test_danjuan_future_ts_is_rejected(monkeypatch):
     )
 
     assert _danjuan_index(INDEX_SPECS[0], TRADE_DATE) is None
+
+
+DJ_BASE_DATA = {
+    "pe": DJ_PAYLOADS["SH000300"][0],
+    "pb": DJ_PAYLOADS["SH000300"][1],
+    "pe_percentile": DJ_PAYLOADS["SH000300"][2],
+    "pb_percentile": DJ_PAYLOADS["SH000300"][3],
+    "ts": DJ_TS,
+    "date": "11-27",
+}
+
+
+def _without(key):
+    data = dict(DJ_BASE_DATA)
+    data.pop(key)
+    return data
+
+
+def _with(**overrides):
+    data = dict(DJ_BASE_DATA)
+    data.update(overrides)
+    return data
+
+
+DJ_BAD_PAYLOADS = {
+    "result_code_nonzero": {"result_code": 1, "data": DJ_BASE_DATA},
+    "result_code_login_error": {"result_code": 300001, "data": DJ_BASE_DATA},
+    "data_missing": {"result_code": 0},
+    "data_not_dict": {"result_code": 0, "data": [1, 2]},
+    "pe_missing": {"result_code": 0, "data": _without("pe")},
+    "pe_non_numeric": {"result_code": 0, "data": _with(pe="abc")},
+    "pe_none": {"result_code": 0, "data": _with(pe=None)},
+    "pe_zero": {"result_code": 0, "data": _with(pe=0)},
+    "pe_negative": {"result_code": 0, "data": _with(pe=-1.0)},
+    "pb_missing": {"result_code": 0, "data": _without("pb")},
+    "pb_non_numeric": {"result_code": 0, "data": _with(pb="abc")},
+    "pb_none": {"result_code": 0, "data": _with(pb=None)},
+    "pb_zero": {"result_code": 0, "data": _with(pb=0)},
+    "pb_negative": {"result_code": 0, "data": _with(pb=-1.0)},
+    "pe_percentile_missing": {"result_code": 0, "data": _without("pe_percentile")},
+    "pe_percentile_non_numeric": {
+        "result_code": 0,
+        "data": _with(pe_percentile="abc"),
+    },
+    "pe_percentile_negative": {"result_code": 0, "data": _with(pe_percentile=-0.1)},
+    "pe_percentile_above_one": {"result_code": 0, "data": _with(pe_percentile=1.1)},
+    "pb_percentile_missing": {"result_code": 0, "data": _without("pb_percentile")},
+    "pb_percentile_non_numeric": {
+        "result_code": 0,
+        "data": _with(pb_percentile="abc"),
+    },
+    "pb_percentile_negative": {"result_code": 0, "data": _with(pb_percentile=-0.1)},
+    "pb_percentile_above_one": {"result_code": 0, "data": _with(pb_percentile=1.1)},
+    "ts_missing": {"result_code": 0, "data": _without("ts")},
+    "ts_non_numeric": {"result_code": 0, "data": _with(ts="soon")},
+    "ts_future": {"result_code": 0, "data": _with(ts=1795795200000)},
+}
+
+
+@pytest.mark.parametrize(
+    "payload", DJ_BAD_PAYLOADS.values(), ids=DJ_BAD_PAYLOADS.keys()
+)
+def test_danjuan_malformed_payloads_return_none(monkeypatch, payload):
+    monkeypatch.setattr(
+        fundamentals.requests, "get", lambda url, **kwargs: _Response(payload)
+    )
+
+    assert _danjuan_index(INDEX_SPECS[0], TRADE_DATE) is None
+
+
+@pytest.mark.parametrize(
+    "error", [requests.Timeout("timeout"), requests.ConnectionError("down")]
+)
+def test_danjuan_transport_errors_return_none(monkeypatch, error):
+    def fake_get(url, **kwargs):
+        raise error
+
+    monkeypatch.setattr(fundamentals.requests, "get", fake_get)
+
+    assert _danjuan_index(INDEX_SPECS[0], TRADE_DATE) is None
+
+
+class _BadJSONResponse:
+    def json(self):
+        raise ValueError("not json")
+
+
+def test_danjuan_non_json_body_returns_none(monkeypatch):
+    monkeypatch.setattr(
+        fundamentals.requests, "get", lambda url, **kwargs: _BadJSONResponse()
+    )
+
+    assert _danjuan_index(INDEX_SPECS[0], TRADE_DATE) is None
+
+
+@pytest.mark.parametrize("trade_date", [None, 20261127])
+def test_danjuan_bad_trade_date_type_returns_none(monkeypatch, trade_date):
+    monkeypatch.setattr(
+        fundamentals.requests,
+        "get",
+        lambda url, **kwargs: _Response({"result_code": 0, "data": DJ_BASE_DATA}),
+    )
+
+    assert _danjuan_index(INDEX_SPECS[0], trade_date) is None
+
+
+def test_danjuan_string_zero_result_code_is_accepted(monkeypatch):
+    monkeypatch.setattr(
+        fundamentals.requests,
+        "get",
+        lambda url, **kwargs: _Response({"result_code": "0", "data": DJ_BASE_DATA}),
+    )
+
+    record = _danjuan_index(INDEX_SPECS[0], TRADE_DATE)
+
+    assert record is not None
+    assert record.code == "SH000300"

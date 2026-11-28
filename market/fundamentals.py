@@ -141,7 +141,7 @@ def _danjuan_index(spec: IndexSpec, trade_date: str) -> IndexValuation | None:
             timeout=4,
         )
         payload = response.json()
-        if payload.get("result_code") != 0:
+        if str(payload.get("result_code")) != "0":
             raise ValueError(f"result_code={payload.get('result_code')}")
         data = payload.get("data")
         if not isinstance(data, dict):
@@ -162,10 +162,10 @@ def _danjuan_index(spec: IndexSpec, trade_date: str) -> IndexValuation | None:
         as_of = datetime.fromtimestamp(
             data["ts"] / 1000, tz=_BEIJING_TZ
         ).date().isoformat()
+        if as_of > trade_date:
+            return None
     except Exception:
         logger.warning("蛋卷指数估值取数失败：%s", spec.name, exc_info=True)
-        return None
-    if as_of > trade_date:
         return None
     return IndexValuation(
         name=spec.name,
