@@ -228,14 +228,26 @@ def test_facts_block_with_only_index_valuation_is_not_unavailable():
     assert "- 沪深300：PE 13.85" in block
 
 
-def test_facts_block_without_index_valuation_has_no_multi_index_line():
+def test_facts_block_without_index_valuation_keeps_original_output():
     facts = _full_facts()
     facts.fundamentals = _fundamentals()
     facts.fundamentals.valuation.indexes = []
 
     block = facts_block(facts)
+    section = block[block.index("## 估值水平\n") : block.index("\n\n## 资金面")]
 
-    assert "多指数估值" not in block
+    assert section == (
+        "## 估值水平\n"
+        "第三方 PE(TTM)：12.60（2026-11-01）\n"
+        "PE 分位：45.2%（近 120 个月）\n"
+        "官方市盈率1：13.61\n"
+        "官方市盈率2：14.69\n"
+        "官方股息率1：2.60%\n"
+        "官方股息率2：2.50%\n"
+        "官方日期：2026-11-26\n"
+        "来源：乐咕乐股（akshare） / 中证指数（akshare）\n"
+        "口径以中证指数为准"
+    )
 
 
 def test_validate_numbers_accepts_multi_index_facts_text():
