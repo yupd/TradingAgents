@@ -5,7 +5,9 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+
+import requests
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +22,11 @@ EARNINGS_NOTE = "按可比公司净利润总额计算，非官方指数口径"
 PERCENTILE_MONTHS = 120
 MARGIN_STALE_DAYS = 3
 MONTH_RE = re.compile(r"(\d{4})年(\d{1,2})月")
+_BROWSER_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+)
+_BEIJING_TZ = timezone(timedelta(hours=8))  # Danjuan ts is Beijing-midnight epoch
 
 
 @dataclass
@@ -123,6 +130,53 @@ def _num(value):
     except (TypeError, ValueError):
         return None
     return None if number != number else number  # akshare uses NaN for missing
+
+
+def _danjuan_index(spec: IndexSpec, trade_date: str) -> IndexValuation | None:
+    """One index valuation from Danjuan; any failure degrades to ``None``."""
+    try:
+        response = requests.get(
+            f"https://danjuanfunds.com/djapi/index_eva/detail/{spec.code}",
+            headers={"User-Agent": _BROWSER_UA},
+            timeout=4,
+        )
+        payload = response.json()
+        if payload.get("result_code") != 0:
+            raise ValueError(f"result_code={payload.get('result_code')}")
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            raise ValueError("data is not an object")
+        pe = _num(data.get("pe"))
+        pb = _num(data.get("pb"))
+        pe_percentile = _num(data.get("pe_percentile"))
+        pb_percentile = _num(data.get("pb_percentile"))
+        if pe is None or pe <= 0 or pb is None or pb <= 0:
+            raise ValueError("pe/pb not positive")
+        if (
+            pe_percentile is None
+            or not 0 <= pe_percentile <= 1
+            or pb_percentile is None
+            or not 0 <= pb_percentile <= 1
+        ):
+            raise ValueError("percentile out of [0, 1]")
+        as_of = datetime.fromtimestamp(
+            data["ts"] / 1000, tz=_BEIJING_TZ
+        ).date().isoformat()
+    except Exception:
+        logger.warning("蛋卷指数估值取数失败：%s", spec.name, exc_info=True)
+        return None
+    if as_of > trade_date:
+        return None
+    return IndexValuation(
+        name=spec.name,
+        code=spec.code,
+        pe=pe,
+        pe_percentile=round(pe_percentile * 100, 1),
+        pb=pb,
+        pb_percentile=round(pb_percentile * 100, 1),
+        as_of=as_of,
+        source=DJ_SOURCE,
+    )
 
 
 def _period_of(row):

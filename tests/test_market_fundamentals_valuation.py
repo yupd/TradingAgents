@@ -1,12 +1,15 @@
 import pandas as pd
 
+import market.fundamentals as fundamentals
 from market.fundamentals import (
     BFW_SOURCE,
     DJ_SOURCE,
     INDEX_SPECS,
     OFFICIAL_SOURCE,
     PE_SOURCE,
+    IndexValuation,
     Valuation,
+    _danjuan_index,
     fetch_valuation,
 )
 
@@ -159,3 +162,99 @@ def test_both_sources_fail_returns_empty_valuation(monkeypatch):
 
     assert valuation == Valuation()
     assert valuation.source is None
+
+
+# Real 2026-11-27 payload raw values: (pe, pb, pe_percentile, pb_percentile).
+DJ_PAYLOADS = {
+    "SH000300": (13.643, 1.3554, 0.7012, 0.2552),
+    "SZ399006": (27.4511, 3.8626, 0.0624, 0.1716),
+    "SH000688": (99.81, 6.7208, 0.766, 0.7481),
+    "SH000905": (26.9565, 1.9738, 0.5688, 0.5364),
+    "SH000852": (35.7077, 1.876, 0.3328, 0.0828),
+}
+# Expected record after percent conversion: (pe, pe%, pb, pb%).
+DJ_EXPECTED = {
+    "SH000300": (13.643, 70.1, 1.3554, 25.5),
+    "SZ399006": (27.4511, 6.2, 3.8626, 17.2),
+    "SH000688": (99.81, 76.6, 6.7208, 74.8),
+    "SH000905": (26.9565, 56.9, 1.9738, 53.6),
+    "SH000852": (35.7077, 33.3, 1.876, 8.3),
+}
+DJ_TS = 1795708800000  # 2026-11-27 00:00 Beijing
+
+
+def _dj_payload(code, ts=DJ_TS, result_code=0):
+    pe, pb, pe_pct, pb_pct = DJ_PAYLOADS[code]
+    return {
+        "result_code": result_code,
+        "data": {
+            "pe": pe,
+            "pb": pb,
+            "pe_percentile": pe_pct,
+            "pb_percentile": pb_pct,
+            "ts": ts,
+            "date": "11-27",
+        },
+    }
+
+
+class _Response:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def json(self):
+        return self._payload
+
+
+def test_danjuan_detail_maps_all_five_indexes(monkeypatch):
+    def fake_get(url, **kwargs):
+        return _Response(_dj_payload(url.rsplit("/", 1)[-1]))
+
+    monkeypatch.setattr(fundamentals.requests, "get", fake_get)
+
+    records = [_danjuan_index(spec, TRADE_DATE) for spec in INDEX_SPECS]
+
+    assert records == [
+        IndexValuation(
+            name=spec.name,
+            code=spec.code,
+            pe=DJ_EXPECTED[spec.code][0],
+            pe_percentile=DJ_EXPECTED[spec.code][1],
+            pb=DJ_EXPECTED[spec.code][2],
+            pb_percentile=DJ_EXPECTED[spec.code][3],
+            as_of="2026-11-27",
+            source=DJ_SOURCE,
+        )
+        for spec in INDEX_SPECS
+    ]
+    assert [record.code for record in records] == [spec.code for spec in INDEX_SPECS]
+
+
+def test_danjuan_hits_each_code_once_with_timeout_four(monkeypatch):
+    calls = []
+
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        return _Response(_dj_payload(url.rsplit("/", 1)[-1]))
+
+    monkeypatch.setattr(fundamentals.requests, "get", fake_get)
+
+    for spec in INDEX_SPECS:
+        _danjuan_index(spec, TRADE_DATE)
+
+    assert [url for url, _ in calls] == [
+        f"https://danjuanfunds.com/djapi/index_eva/detail/{spec.code}"
+        for spec in INDEX_SPECS
+    ]
+    assert all(kwargs["timeout"] == 4 for _, kwargs in calls)
+    assert len(calls) == len(INDEX_SPECS)  # exactly one attempt per index
+
+
+def test_danjuan_future_ts_is_rejected(monkeypatch):
+    monkeypatch.setattr(
+        fundamentals.requests,
+        "get",
+        lambda url, **kwargs: _Response(_dj_payload("SH000300", ts=1795795200000)),
+    )
+
+    assert _danjuan_index(INDEX_SPECS[0], TRADE_DATE) is None
